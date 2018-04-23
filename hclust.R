@@ -1,0 +1,5 @@
+setwd("/files2/scratch/qkt561/AMASE")
+fatals<-read.table("fatal_features_600_999999_1.csv",header=F,sep=",")
+hc <- hclust(dist(fatals), "ave")
+memb <- cutree(hc, k = 10)
+write.table(memb,file="fatal_cluster_member.csv",quote=FALSE,row.names=FALSE,col.names=FALSE)
