@@ -12,7 +12,6 @@ int main(int argc,char** argv){
 	s_cluster_threshold2=atoi(argv[6]);
 	location_level=atoi(argv[7]);
 	warn_max_count=atoi(argv[8]);
-
 	std::vector<std::vector<char*>*>* warn_table=read_table(argv[1]);
 	std::vector<std::vector<char*>*>* fatal_table=read_table(argv[2]);
 	std::vector<DWORD>* warn_dates=chars2ints(warn_table[0][COL_DATE]);

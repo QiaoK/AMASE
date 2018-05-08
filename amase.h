@@ -41,7 +41,13 @@ typedef struct{
 	std::vector<DTYPE> *features;
 	DWORD label;
 	DWORD lead_time;
+	DWORD start_date;
 }Feature;
+
+typedef struct{
+	std::vector<DWORD> *observed_warn;
+	std::vector<DWORD> *observed_fatal;
+}Window;
 
 extern std::vector<Interval>* temporal_clustering(std::vector<DWORD>* dates,DWORD threshold);
 extern std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* cluster_filter(std::vector<Interval>* t_clusters,std::vector<DWORD> *dates,std::vector<char*>* locations,DWORD threshold,WORD location_level);
@@ -52,4 +58,7 @@ extern void delete_st_clusters(std::vector<std::vector<std::vector<std::vector<D
 extern DWORD st_cluster_size(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* st_clusters);
 extern std::vector<std::vector<DTYPE>*>* st_cluster_to_features(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* st_clusters,std::vector<std::vector<char*>*>* table,std::vector<std::string>* attributes);
 extern std::map<std::vector<DWORD>*,DWORD>* cluster_ranking(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* st_clusters);
+extern std::vector<DWORD>* fatal_nearest_warn(std::vector<DWORD>* warn_dates,std::vector<DWORD>* fatal_dates);
+extern std::vector<Feature>* period_based_features(std::vector<std::vector<char*>*>* warn_table,std::vector<DWORD> *warn_dates,std::vector<DWORD> *fatal_dates,DWORD period,DWORD observe_size,DWORD break_down);
+
 #endif

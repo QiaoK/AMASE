@@ -124,12 +124,14 @@ void write_features(std::vector<Feature> *features,const char* filename,std::vec
 		fprintf(stream,"%s,",attributes[0][i].c_str());
 	}
 	fprintf(stream,"LEAD_TIME,");
+	fprintf(stream,"DATE,");
 	fprintf(stream,"FATAL\n");
 	for(i=0;i<features->size();i++){
 		for(j=0;j<features[0][i].features->size();j++){
 			fprintf(stream,"%f,",features[0][i].features[0][j]);
 		}
 		fprintf(stream,"%d,",features[0][i].lead_time);
+		fprintf(stream,"%d,",features[0][i].start_date);
 		fprintf(stream,"%d\n",features[0][i].label);
 	}
 	fclose(stream);

@@ -1,5 +1,30 @@
 #include "amase.h"
 
+
+std::vector<DWORD>* fatal_nearest_warn(std::vector<DWORD>* warn_dates,std::vector<DWORD>* fatal_dates){
+	std::vector<DWORD>* result=new std::vector<DWORD>;
+	unsigned int i=0,j=0;
+	while(j<fatal_dates->size()){
+		if(i==0&&warn_dates[0][i]>fatal_dates[0][j]){
+			j++;
+		}else{
+			if(i+1==warn_dates->size()){
+				for(j=j;j<fatal_dates->size();j++){
+					result->push_back(fatal_dates[0][j]-warn_dates[0][i]);
+				}
+			}else{
+				if(warn_dates[0][i+1]>fatal_dates[0][j]){
+					result->push_back(fatal_dates[0][j]-warn_dates[0][i]);
+					j++;
+				}else{
+					i++;
+				}
+			}
+		}
+	}
+	return result;
+}
+
 std::vector<Interval>* temporal_clustering(std::vector<DWORD>* dates,DWORD threshold){
 	std::vector<Interval>* result=new std::vector<Interval>(1);
 	if(dates->size()==1){
@@ -123,10 +148,10 @@ void extract_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>
 	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
 	std::vector<DTYPE>* feature=NULL;
 	//Count number of features for every tuple (COMPONENT,CATEGORY,SEVERITY)
-	lead_time[0]=0;
+	lead_time[0]=-1;
 	warn_event_count[0]=cluster->size();
 	Feature element;
-	DWORD total=0;
+	DWORD total=0,start=fatal_dates[0][fatal_start];
 	//Iterate through the current warn cluster (element means which in the dataframe.)
 	for(i=stripe;i<cluster->size();i++){
 		index=cluster[0][i];
@@ -134,19 +159,20 @@ void extract_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>
 			warn_event_count[0]=i;
 			break;
 		}
-		if((DWORD)i%warn_max_count==0&&i>0){
+		if((DWORD)(i-stripe)%warn_max_count==0&&i-stripe>0){
 			//If for warn_max_count number of warn events, there is no fatal, we mark it with label -1.
 			if(i/warn_max_count>1){
 				if(intermediate!=1){
 					element.features=feature;
 					element.label=-1;
 					element.lead_time=fatal_dates[0][fatal_start]-warn_dates[0][cluster[0][i-1]];
+					element.start_date=start;
 					result->push_back(element);
 				}else{
 					delete feature;
 				}
 			}
-			lead_time[0]=warn_dates[0][cluster[0][i]]-warn_dates[0][cluster[0][i-warn_max_count]];
+			lead_time[0]=warn_dates[0][cluster[0][i-1]];
 			feature=new std::vector<DTYPE>(attributes->size());
 			for(j=0;j<attributes->size();j++){
 				std::string s=attributes[0][j];
@@ -175,10 +201,13 @@ void extract_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>
 	//printf("check\n");
 	element.label=1;
 	if(feature!=NULL){
+		lead_time[0]=fatal_dates[0][fatal_start]-lead_time[0];
 		element.features=feature;
+		element.lead_time=lead_time[0];
+		element.start_date=start;
 		result->push_back(element);
-	}else if((int)i==warn_max_count){
-		lead_time[0]=warn_dates[0][cluster[0][i]]-warn_dates[0][cluster[0][i-warn_max_count]];
+	}else if((int)(i-stripe)==warn_max_count){
+		lead_time[0]=fatal_dates[0][fatal_start]-warn_dates[0][cluster[0][i-1]];
 		feature=new std::vector<DTYPE>(attributes->size());
 		for(j=0;j<attributes->size();j++){
 			std::string s=attributes[0][j];
@@ -190,6 +219,8 @@ void extract_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>
 			}
 		}
 		element.features=feature;
+		element.lead_time=lead_time[0];
+		element.start_date=start;
 		result->push_back(element);
 	}
 	/*else{
@@ -259,8 +290,10 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 	DWORD counter=0;
 	std::vector<DWORD> *warn_counts=new std::vector<DWORD>;
 	std::vector<DWORD> *lead_times=new std::vector<DWORD>;
-	DWORD warn_event_count=0,lead_time=0,achieved_count=0;
+	DWORD warn_event_count=0,lead_time=0,achieved_count=0,lead_time2;
 	std::map<std::vector<DWORD>*,DWORD>* fatal_ranking=cluster_ranking(fatal_clusters);
+	FILE *lead_time_writer=fopen("lead_times.txt","w");
+
 	for(i=0;i<warn_clusters->size();i++){
 		warn_start=warn_t_clusters[0][i].start;
 		warn_end=warn_t_clusters[0][i].end;
@@ -296,11 +329,11 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 							}
 							warn_counts->push_back(warn_event_count);
 							lead_times->push_back(lead_time);
-							
-							extract_features(warn_s_clusters[0][w],warn_table,attributes,feature.label,fatal_start2,warn_dates,fatal_dates,warn_max_count,&lead_time,&warn_event_count,warn_max_count/2,result);
+							fprintf(lead_time_writer,"%d,",lead_time);
+							extract_features(warn_s_clusters[0][w],warn_table,attributes,feature.label,fatal_start2,warn_dates,fatal_dates,warn_max_count,&lead_time2,&warn_event_count,warn_max_count/2,result);
 							warn_counts->push_back(warn_event_count);
-							lead_times->push_back(lead_time);
-							
+							lead_times->push_back(lead_time2);
+							fprintf(lead_time_writer,"%d\n",lead_time2);							
 							counter++;
 							//k=fatal_s_clusters->size();
 							//j=sub_fatal_clusters->size();
@@ -330,6 +363,9 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 	printf("%d samples paired out of %ld warn events, %d samples reached %d warn count\n",counter,result->size(),achieved_count,warn_max_count);
 	printf("warn counts per sample distribution, 10%%=%d, 25%%=%d, 50%%=%d, 75%%=%d, 90%%=%d\n", warn_counts[0][warn_counts->size()*.1], warn_counts[0][warn_counts->size()*.25], warn_counts[0][warn_counts->size()*.5], warn_counts[0][warn_counts->size()*.75], warn_counts[0][warn_counts->size()*.9]);
 	printf("lead time per sample distribution, 10%%=%d, 25%%=%d, 50%%=%d, 75%%=%d, 90%%=%d\n", lead_times[0][lead_times->size()*.1], lead_times[0][lead_times->size()*.25], lead_times[0][lead_times->size()*.5], lead_times[0][lead_times->size()*.75], lead_times[0][lead_times->size()*.9]);
+
+
+	fclose(lead_time_writer);
 	delete lead_times;
 	delete warn_counts;
 	delete fatal_ranking;

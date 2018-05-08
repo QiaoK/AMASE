@@ -158,8 +158,24 @@ def clustering(fatal_feature,k):
   result=fcluster(linkage(dist, method='single'), k-1, 'maxclust')
   return result
 
+def split_train_test(data_x,data_y,dates,train_max):
+  data_x_train=[]
+  data_y_train=[]
+  data_x_test=[]
+  data_y_test=[]
+  for i in range(len(data_x)):
+    if dates[i]<=train_max:
+      data_x_train.append(data_x[i])
+      data_y_train.append(data_y[i])
+    else:
+      data_x_test.append(data_x[i])
+      data_y_test.append(data_y[i])
+  print("train:test={0}:{1},{2}".format(len(data_x_train),len(data_x_test),(0.0+len(data_x_train))/len(data_x)))
+  return data_x_train,data_y_train,data_x_test,data_y_test
+
 if __name__ == "__main__":
   # Load training and eval data
+  train_max=1462512550
   training_epochs=int(sys.argv[2])
   tf.set_random_seed(5555)
   data_x=[]
@@ -167,6 +183,7 @@ if __name__ == "__main__":
   #cluster_membership=clustering(sys.argv[2],output_size)
   #print("Cluster number",len(set(cluster_membership)))
   fatals=0
+  dates=[]
   with open(sys.argv[1]) as csvfile:
     reader = csv.DictReader(csvfile)
     for x in reader:
@@ -179,15 +196,19 @@ if __name__ == "__main__":
       #if temp>0:
       #  temp=cluster_membership[temp-1]
       data_y.append(temp)
+      dates.append(int(x["DATE"]))
       del x["FATAL"]
       del x["LEAD_TIME"]
+      del x["DATE"]
       data_x.append(x)
   entries=data_x[0].keys()
   table=create_nominal_table(data_y)
+  #data_x_train,data_y_train,data_x_test,data_y_test=split_train_test(data_x,data_y,dates,train_max)
   data_x_train=data_x[0:int(len(data_x)*0.8)]
   data_y_train=data_y[0:int(len(data_x)*0.8)]
   data_x_test=data_x[int(len(data_x)*0.8+1):len(data_x)]
   data_y_test=data_y[int(len(data_y)*0.8+1):len(data_y)]
+  #print("last date=",dates[int(len(data_x)*0.8)])
   print("fatal data size is {0}".format(fatals))
   print("original train data size={0}".format(len(data_y_train)))
   replicate_class(table,data_x_train,data_y_train,.45,1,len(data_y_train))
