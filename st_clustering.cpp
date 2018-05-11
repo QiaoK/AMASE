@@ -161,7 +161,7 @@ void extract_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>
 		}
 		if((DWORD)(i-stripe)%warn_max_count==0&&i-stripe>0){
 			//If for warn_max_count number of warn events, there is no fatal, we mark it with label -1.
-			if(i/warn_max_count>1){
+			if((i-stripe)/warn_max_count>1){
 				if(intermediate!=1){
 					element.features=feature;
 					element.label=-1;
@@ -183,6 +183,7 @@ void extract_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>
 					//std::cout<<result[0][i]<<"\n";
 				}
 			}
+			start=warn_dates[0][cluster[0][i-1]];
 			total=0;
 			feature_count->clear();
 			
@@ -316,7 +317,7 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 			warn_location=extract_location_level(warn_table[0][COL_LOCATION][0][warn_start2],location_level);
 			for(j=0;j<sub_fatal_clusters->size();j++){			
 				fatal_s_clusters=unlist_temporal_feature_index(sub_fatal_clusters[0][j]);
-				for(k=0;k<fatal_s_clusters->size();k++){
+				for(k=fatal_s_clusters->size()-1;k<(unsigned)(0)-(unsigned)(1);k--){
 					fatal_start2=fatal_s_clusters[0][k][0][0];
 					if(warn_dates[0][warn_start2]<=fatal_dates[0][fatal_start2]&&warn_dates[0][warn_end2]>=fatal_dates[0][fatal_start2]){
 						fatal_location=extract_location_level(fatal_table[0][COL_LOCATION][0][fatal_start2],location_level);
@@ -343,8 +344,9 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 				}
 				delete fatal_s_clusters;
 			}
-			if(feature.label==0){
+			if(feature.label==0&&(DWORD)warn_s_clusters[0][w]->size()>=warn_max_count){
 				feature.features=extract_feature(warn_s_clusters[0][w],warn_table,attributes,-1,-1,warn_dates,fatal_dates,warn_max_count,&lead_time,&warn_event_count);
+				feature.start_date=warn_dates[0][warn_s_clusters[0][w][0][warn_max_count-1]];
 				result->push_back(feature);
 			}
 			Free(warn_location);
