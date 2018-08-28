@@ -1,23 +1,3 @@
-"""Short and sweet LSTM implementation in Tensorflow.
-Motivation:
-When Tensorflow was released, adding RNNs was a bit of a hack - it required
-building separate graphs for every number of timesteps and was a bit obscure
-to use. Since then TF devs added things like `dynamic_rnn`, `scan` and `map_fn`.
-Currently the APIs are decent, but all the tutorials that I am aware of are not
-making the best use of the new APIs.
-Advantages of this implementation:
-- No need to specify number of timesteps ahead of time. Number of timesteps is
-  infered from shape of input tensor. Can use the same graph for multiple
-  different numbers of timesteps.
-- No need to specify batch size ahead of time. Batch size is infered from shape
-  of input tensor. Can use the same graph for multiple different batch sizes.
-- Easy to swap out different recurrent gadgets (RNN, LSTM, GRU, your new
-  creative idea)
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from sklearn import datasets, linear_model
 from sklearn.metrics import mean_squared_error, r2_score
 from scipy.cluster.hierarchy import fcluster
@@ -25,13 +5,63 @@ from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import pdist
 import numpy as np
 import random
-import tensorflow as tf
-import tensorflow.contrib.layers as layers
+import torch
+import torch.nn as nn
 import csv
 import math
 import sys
+from sklearn import metrics
 
-map_fn = tf.map_fn
+# Device configuration
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+# Hyper parameters
+output_size = 2
+learning_rate = 0.001
+batch_size = 256
+
+# Convolutional neural network (two convolutional layers)
+
+class ConvNet(nn.Module):
+    def __init__(self,feature_length, sequence_length, num_classes=output_size):
+        super(ConvNet, self).__init__()
+        filter=32
+        hidden=2048
+        kernel_size=15
+        self.layer1 = nn.Sequential(
+            nn.Conv2d(1, filter, kernel_size=[2,kernel_size], stride=1, padding=[0,int(kernel_size/2)]),
+            nn.BatchNorm2d(filter),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=[1,kernel_size], stride=[1,kernel_size]))
+        self.layer2 = nn.Sequential(
+            nn.Conv2d(filter, filter, kernel_size=[1,3], stride=1, padding=[0,1]),
+            nn.BatchNorm2d(filter),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=[1,2], stride=[1,2]))
+        self.layer3 = nn.Sequential(
+            nn.Conv2d(filter, filter, kernel_size=[1,3], stride=1, padding=[0,1]),
+            nn.BatchNorm2d(filter),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=[1,2], stride=[1,2]))
+        self.fc_hidden = nn.Linear(int(int(int(sequence_length/kernel_size)/2)/2)*filter+feature_length, hidden)
+        self.relu = nn.ReLU()
+        self.fc_hidden2 = nn.Linear(hidden, hidden)
+        self.fc = nn.Linear(hidden, num_classes)
+        #self.output = nn.Softmax()
+
+    def forward(self, x, y):
+        out = self.layer1(x)
+        out = self.layer2(out)
+        out = self.layer3(out)
+        out = out.reshape(out.size(0), -1)
+        out = torch.cat((out,y),1)
+        out = self.fc_hidden(out)
+        out = self.relu(out)
+        out = self.fc_hidden2(out)
+        out = self.relu(out)
+        out = self.fc(out)
+        #out = self.output(out)
+        return out
 
 def nominal_to_binary(data_y):
     nominals=list(set(data_y))
@@ -59,52 +89,49 @@ def create_nominal_table(data_y):
     return table
 
 def nominal_to_int(data_y,table):
+    '''
     result=np.zeros([len(data_y),len(table)])
     for i in range(0,len(data_y)):
         result[i,table[data_y[i]]]=1
     return result
+    '''
+    return np.asarray(data_y)
 
-# Parameters
-learning_rate = 0.001
-batch_size = 1024
-display_step = 1
-output_size = 3
-
-# Network Parameters
-
-# Create model
-def multilayer_perceptron(x,weights,biases):
-  # Hidden fully connected layer with 256 neurons
-  #layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
-  # Hidden fully connected layer with 256 neurons
-  #layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
-  # Output fully connected layer with a neuron for each class
-  #out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
-  dense = tf.layers.dense(inputs=x, units=256, activation=tf.nn.relu)
-  dropout = tf.layers.dropout(
-      inputs=dense, rate=0.41)
-  dense2 = tf.layers.dense(inputs=dropout, units=512, activation=tf.nn.relu)
-  out_layer=tf.layers.dense(inputs=dense2, units=output_size)
-
-  return out_layer
-
-
-def split_by_class(data_x,data_y,table):
+def split_by_class(data_x,data_y,dates,table):
   result={}
   for t in table:
-    result[table[t]]=[[],[]]
+    result[table[t]]=[[],[],[]]
   for i in range(len(data_y)):
     result[table[data_y[i]]][0].append(data_x[i])
     result[table[data_y[i]]][1].append(data_y[i])
+    result[table[data_y[i]]][2].append(dates[i])
   return result
 
 
 def format_data(data,entries):
-  result=np.empty([len(data),len(data[0])])
-  for i in range(len(data)):
-    for j in range(len(entries)):
-      result[i,j]=data[i][entries[j]]
-  return result
+    feature_names=[]
+    conv_names=[]
+    for k in entries:
+        if 'TEMPORAL_INTERVAL' in k or 'SPATIAL_INTERVAL' in k:
+            conv_names.append(k)
+        else:
+            feature_names.append(k)
+    conv_names.sort()
+    features=np.empty((len(data),len(feature_names)))
+    conv_features=np.empty((len(data),2,len(conv_names)/2))
+    for i in range(len(data)):
+        for j in range(0,len(feature_names)):
+            features[i,j]=data[i][feature_names[j]]
+        count1=0
+        count2=0
+        for j in range(0,len(conv_names)):
+            if 'TEMPORAL' in conv_names[j]:
+                conv_features[i,0,count1]=data[i][conv_names[j]]
+                count1+=1
+            else:
+                conv_features[i,1,count2]=data[i][conv_names[j]]
+                count2+=1
+    return [features,conv_features]
 
 def replicate_class(table,data_x,data_y,percent,name,size):
   new_data_x=[]
@@ -158,173 +185,316 @@ def clustering(fatal_feature,k):
   result=fcluster(linkage(dist, method='single'), k-1, 'maxclust')
   return result
 
-def split_train_test(data_x,data_y,dates,train_max):
+def split_train_test(data_x,data_y,dates,fatal_dates,train_max):
   data_x_train=[]
   data_y_train=[]
   data_x_test=[]
   data_y_test=[]
+  test_dates=[]
+  fatal_dict={}
+  fatal_clusters=set()
   for i in range(len(data_x)):
+    if data_y[i]==1:
+      fatal_clusters.add(fatal_dates[i])
     if dates[i]<=train_max:
       data_x_train.append(data_x[i])
       data_y_train.append(data_y[i])
     else:
       data_x_test.append(data_x[i])
       data_y_test.append(data_y[i])
-  print("train:test={0}:{1},{2}".format(len(data_x_train),len(data_x_test),(0.0+len(data_x_train))/len(data_x)))
-  return data_x_train,data_y_train,data_x_test,data_y_test
+      test_dates.append(dates[i])
+      if data_y[i]==1:
+        if dates[i] not in fatal_dict:
+          fatal_dict[dates[i]]=set()
+        fatal_dict[dates[i]].add(fatal_dates[i])
+  print("train:test={0}:{1},{2},total fatal clusters={3}".format(len(data_x_train),len(data_x_test),(0.0+len(data_x_train))/len(data_x),len(fatal_clusters)))
+  return data_x_train,data_y_train,data_x_test,data_y_test,test_dates,fatal_dict
+
+def summarize_class(data):
+    tmp0=0
+    tmp1=0
+    for i in range(0,len(data)):
+        if data[i]==0:
+            tmp0+=1
+        elif data[i]==1:
+            tmp1+=1
+    print("train data class 0 ={0}, class 1 ={1}".format(tmp0,tmp1))
+
+def read_data(filename):
+    data_x=[]
+    data_y=[]
+    #cluster_membership=clustering(sys.argv[2],output_size)
+    #print("Cluster number",len(set(cluster_membership)))
+    fatals=0
+    dates=[]
+    fatal_dates=[]
+    with open(filename) as csvfile:
+        reader = csv.DictReader(csvfile)
+        for x in reader:
+            #del x[""]
+            #del x["START"]
+            #del x["END"]
+            temp=int(x["FATAL"])
+            if temp==1:
+                fatals+=1
+            if temp==-1:
+                temp=0
+            #if temp>0:
+            #  temp=cluster_membership[temp-1]
+            data_y.append(temp)
+            dates.append(int(x["DATE"]))
+            fatal_dates.append(int(x["FATAL_START_DATE"]))
+            del x["FATAL"]
+            del x["LEAD_TIME"]
+            del x["DATE"]
+            del x["FATAL_START_DATE"]
+            del x["LOCATION_PINPOINT"]
+            for k in x:
+                x[k]=float(x[k])
+            data_x.append(x)
+    print("fatal data size is {0}".format(fatals))
+    return data_x,data_y,dates,fatal_dates
+
+def softmax(x):
+    """Compute softmax values for each sets of scores in x."""
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum()
+
+def determin_ROC_threshold(eval_data,eval_labels,model):
+    model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)
+    scores=np.empty(eval_labels.shape[0])
+    positive_class=0
+    batch_size = 1024
+    batches = (eval_labels.shape[0]+batch_size-1)/batch_size
+    total_features=eval_labels.shape[0]
+    for i in range(0,batches):
+        if (i+1)*batch_size<total_features:
+            start=i*batch_size
+            end=(i+1)*batch_size
+        else:
+            start=i*batch_size
+            end=total_features
+        image=eval_data[1][start:end]
+        data_x=eval_data[0][start:end]
+        
+        images = np.reshape(image,(end-start,1,eval_data[1].shape[1],eval_data[1].shape[2]))
+        data_x = np.reshape(data_x,(end-start,eval_data[0].shape[1]))
+        images = torch.from_numpy(images).float()
+        data_x = torch.from_numpy(data_x).float()
+        images = images.to(device)
+        data_x = data_x.to(device)
+        
+        outputs = model(images,data_x)
+        predicted = outputs.data.cpu().numpy()
+        
+ 
+        for j in range(0,predicted.shape[0]):
+            probability=softmax(predicted[j])
+            scores[i*batch_size+j]=(10000*probability[1])/(10000*probability[1]+10000*probability[0])
+            if eval_labels[i*batch_size+j]==1:
+                positive_class+=1
+    
+    fpr, tpr, thresholds = metrics.roc_curve(eval_labels, scores, pos_label=1)
+    fp = np.multiply(fpr,eval_labels.shape[0]-positive_class)
+    tp = np.multiply(tpr,positive_class)
+    fn = np.subtract(np.full(tp.shape,positive_class),tp)
+    f1_score = np.divide(tp,np.add(np.multiply(tp,2),np.add(fn,fp)))
+    return thresholds[np.argmax(f1_score)]
+
+def test_model(eval_data,eval_labels,eval_dates,fatal_dict,undetected_fatal,model,threshold=0.5):
+    model.eval()  # eval mode (batchnorm uses moving mean/variance instead of mini-batch mean/variance)
+    correct=0
+    batch_size = 1024
+    batches = (eval_labels.shape[0]+batch_size-1)/batch_size
+    total_features=eval_labels.shape[0]
+    for i in range(0,batches):
+        if (i+1)*batch_size<total_features:
+            start=i*batch_size
+            end=(i+1)*batch_size
+        else:
+            start=i*batch_size
+            end=total_features
+        image=eval_data[1][start:end]
+        data_x=eval_data[0][start:end]
+
+        images = np.reshape(image,(end-start,1,eval_data[1].shape[1],eval_data[1].shape[2]))
+        data_x = np.reshape(data_x,(end-start,eval_data[0].shape[1]))
+        images = torch.from_numpy(images).float()
+        data_x = torch.from_numpy(data_x).float()
+        images = images.to(device)
+        data_x = data_x.to(device)
+        
+        outputs = model(images,data_x)
+        predicted = outputs.data.cpu().numpy()
+        for j in range(0,predicted.shape[0]):
+            probability=softmax(predicted[j])
+            if (10000*probability[1])/(10000*probability[1]+10000*probability[0])<threshold:
+                prediction=0
+            else:
+                prediction=1
+                if eval_dates[i*batch_size+j] in fatal_dict:
+                    for x in fatal_dict[eval_dates[i*batch_size+j]]:
+                        if x in undetected_fatal:
+                            undetected_fatal.remove(x)
+            if prediction==int(eval_labels[i*batch_size+j]):
+                correct+=1
+    return correct
+
+def evaluate_model(train_data,train_labels,eval_data0,eval_label0,eval_dates0,eval_data1,eval_label1,eval_dates1,fatal_dict,model):
+    threshold=determin_ROC_threshold(train_data,train_labels,model)
+    undetected_fatal=set()
+    for v in fatal_dict.values():
+        for x in v:
+            undetected_fatal.add(x)
+    total_fatals=len(undetected_fatal)
+    tn=test_model(eval_data0,eval_label0,eval_dates0,fatal_dict,undetected_fatal,model,threshold)
+    tp=test_model(eval_data1,eval_label1,eval_dates1,fatal_dict,undetected_fatal,model,threshold)
+    fp=eval_label0.shape[0]-tn
+    fn=eval_label1.shape[0]-tp
+    f1_score=2.0*tp/(2*tp+fn+fp)
+    messages='test accuracy={0},precision={1},recall={2},fatal recovered={3}/{4}={5},threshold={6},f1={7},tp={8},tf={9},fn={10}'.format((.0+tp+tn)/(tp+tn+fn+fp),(.0+tp)/(tp+fp),(.0+tp)/(tp+fn),total_fatals-len(undetected_fatal),total_fatals,(total_fatals-len(undetected_fatal)+.0)/total_fatals,threshold,f1_score,tp,fp,fn)
+    return messages
+
+def normalize_data(train_data_x,test_data_x):
+    entries=train_data_x[0].keys()
+    max_x={}
+    min_x={}
+    for k in entries:
+        max_x[k]=train_data_x[0][k]
+        min_x[k]=train_data_x[0][k]
+    for i in range(1,len(train_data_x)):
+        for k in entries:
+            if max_x[k]<train_data_x[i][k]:
+                max_x[k]=train_data_x[i][k]
+            if min_x[k]>train_data_x[i][k]:
+                min_x[k]=train_data_x[i][k]
+
+    for k in entries:
+        if max_x[k]==min_x[k]:
+            print(k,max_x[k],min_x[k])
+
+    for i in range(0,len(train_data_x)):
+        for k in entries:
+            if max_x[k]==min_x[k]:
+                train_data_x[i][k]=0
+            else:
+                train_data_x[i][k]=(train_data_x[i][k]-min_x[k]+.0)/(max_x[k]-min_x[k])
+
+    for i in range(0,len(test_data_x)):
+        for k in entries:
+            if max_x[k]==min_x[k]:
+                test_data_x[i][k]=0
+            else:
+                test_data_x[i][k]=(test_data_x[i][k]-min_x[k]+.0)/(max_x[k]-min_x[k])
+                if test_data_x[i][k]>1:
+                    test_data_x[i][k]=1.0
+                elif test_data_x[i][k]<0:
+                    test_data_x[i][k]=0.0
 
 if __name__ == "__main__":
-  # Load training and eval data
-  train_max=1462075200
-  training_epochs=int(sys.argv[2])
-  tf.set_random_seed(5555)
-  data_x=[]
-  data_y=[]
-  #cluster_membership=clustering(sys.argv[2],output_size)
-  #print("Cluster number",len(set(cluster_membership)))
-  fatals=0
-  dates=[]
-  with open(sys.argv[1]) as csvfile:
-    reader = csv.DictReader(csvfile)
-    for x in reader:
-      #del x[""]
-      #del x["START"]
-      #del x["END"]
-      temp=int(x["FATAL"])
-      if temp==1:
-        fatals+=1
-      #if temp>0:
-      #  temp=cluster_membership[temp-1]
-      data_y.append(temp)
-      dates.append(int(x["DATE"]))
-      del x["FATAL"]
-      del x["LEAD_TIME"]
-      del x["DATE"]
-      data_x.append(x)
-  entries=data_x[0].keys()
-  table=create_nominal_table(data_y)
-  print(table)
-  data_x_train,data_y_train,data_x_test,data_y_test=split_train_test(data_x,data_y,dates,train_max)
-  '''data_x_train=data_x[0:int(len(data_x)*0.8)]
-  data_y_train=data_y[0:int(len(data_x)*0.8)]
-  data_x_test=data_x[int(len(data_x)*0.8+1):len(data_x)]
-  data_y_test=data_y[int(len(data_y)*0.8+1):len(data_y)]'''
-  #print("last date=",dates[int(len(data_x)*0.8)])
-  print("fatal data size is {0}".format(fatals))
-  print("original train data size={0}".format(len(data_y_train)))
-  replicate_class(table,data_x_train,data_y_train,.45,1,len(data_y_train))
-  #replicate_class(table,data_x_train,data_y_train,.1,0,len(data_y_train))
-  print("new train data size={0}".format(len(data_y_train)))
-  data_by_class = split_by_class(data_x_train,data_y_train,table)
-  print("train 0 has {0},1 has {1}".format(len(data_by_class[0][1]),len(data_by_class[1][1])))
-  train_data = format_data(data_x_train,entries)
-  train_labels = nominal_to_int(data_y_train,table)
-  eval_data = format_data(data_x_test,entries)
-  eval_labels = nominal_to_int(data_y_test,table)
-  data_by_class = split_by_class(data_x_test,data_y_test,table)
-  for i in range(len(data_by_class[2][0])):
-    data_by_class[0][0].append(data_by_class[2][0][i])
-    data_by_class[0][1].append(data_by_class[2][1][i])
-  eval_data0 = format_data(data_by_class[0][0],entries)
-  eval_label0 = nominal_to_int(data_by_class[0][1],table)
-  eval_data1 = format_data(data_by_class[1][0],entries)
-  eval_label1 = nominal_to_int(data_by_class[1][1],table)
-  eval_data2 = format_data(data_by_class[2][0],entries)
-  eval_label2 = nominal_to_int(data_by_class[2][1],table)
-  print("eval 0 has {0}, 1 has {1}, 2 has {2}".format(len(data_by_class[0][0]),len(eval_data1),len(data_by_class[2][0])))
-  regr = linear_model.LinearRegression()
-  regr.fit(train_data, train_labels)
-  
-  predict_y = regr.predict(eval_data)
-  print('Coefficients: \n', regr.coef_)
-  count=0
-  for i in range(len(eval_labels)):
-    maximum_predict=0
-    maximum_label=0
-    predict=0
-    label=0
-    for j in range(len(table)):
-      if maximum_predict<predict_y[i,j]:
-        maximum_predict=predict_y[i,j]
-        predict=j
-      if maximum_label<eval_labels[i,j]:
-        maximum_label=eval_labels[i,j]
-        label=j
-    if label==predict:
-      count+=1
-  print(count/len(predict_y))
-
-  n_input = len(entries)
-  n_classes = len(table)
-  n_hidden_1 = 256 # 1st layer number of neurons
-  n_hidden_2 = 256 # 2nd layer number of neurons
-# tf Graph input
-  X = tf.placeholder("float", [None, n_input])
-  Y = tf.placeholder("float", [None, n_classes])
-
-# Store layers weight & bias
-  weights = {
-      'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1])),
-      'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),
-      'out': tf.Variable(tf.random_normal([n_hidden_2, n_classes]))
-  }
-  biases = {
-      'b1': tf.Variable(tf.random_normal([n_hidden_1])),
-      'b2': tf.Variable(tf.random_normal([n_hidden_2])),
-      'out': tf.Variable(tf.random_normal([n_classes]))
-  }
-
-  # Construct model
-  logits = multilayer_perceptron(X,weights,biases)
-
-  # Define loss and optimizer
-  loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-    logits=logits, labels=Y))
-  optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)
-  train_op = optimizer.minimize(loss_op)
-
-  with tf.Session() as sess:
-    init = tf.global_variables_initializer()
-    sess.run(init)
-    # Test model
-    pred = tf.nn.softmax(logits)  # Apply softmax to logits
-    correct_prediction = tf.equal(tf.argmax(pred, 1), tf.argmax(Y, 1))
-    # Calculate accuracy
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-    # False negative
-    report_event = tf.equal(tf.cast(tf.constant(1),"int64"), tf.argmax(pred, 1))
-    false_negative_percent = tf.reduce_mean(tf.cast(report_event,"float"))
-    # Training cycle
-    for epoch in range(training_epochs):
-        avg_cost = 0.
-        total_batch = int(len(train_data)/batch_size)
-        # Loop over all batches
-        for i in range(total_batch):
-            batch_x = train_data[(i*batch_size):((i+1)*batch_size)]
-            batch_y = train_labels[(i*batch_size):((i+1)*batch_size)]
-            #print(len(batch_x[0]))
-            # Run optimization op (backprop) and cost op (to get loss value)
-            _, c = sess.run([train_op, loss_op], feed_dict={X: batch_x,
-                                                            Y: batch_y})
-            # Compute average loss
-            avg_cost += c / total_batch
-        # Display logs per epoch step
-        if epoch % display_step == 0:
-          fn_count = false_negative_percent.eval({X: eval_data2, Y: eval_label2})*len(eval_label2) + false_negative_percent.eval({X: eval_data0, Y: eval_label0})*len(eval_label0)
-          tp=accuracy.eval({X: eval_data1, Y: eval_label1})
-          recall=tp*len(eval_data1)/(tp*len(eval_data1)+fn_count)
-          print("Epoch:", '%04d' % (epoch+1), "cost={:.9f},accuracy={:.4f},precision={:.4f},recall={:.4f}".format(avg_cost,accuracy.eval({X: eval_data, Y: eval_labels}),tp,recall))
-    print("Optimization Finished!")
-    #saver = tf.train.Saver()
-    #save_path = saver.save(sess, "/home/qkt561/tensor_model.ckpt")
+    # Load training and eval data
+    random.seed(5555)
+    torch.manual_seed(5555)
+    torch.cuda.manual_seed_all(5555)
+    train_max=1462075200
+    training_epochs=int(sys.argv[2])
+    retrain=int(sys.argv[3])
+    data_x,data_y,dates,fatal_dates=read_data(sys.argv[1])
+    entries=data_x[0].keys()
+    #table=create_nominal_table(data_y)
+    table={}
+    table[0]=0
+    table[1]=1
     print(table)
-    print("Accuracy:", accuracy.eval({X: eval_data, Y: eval_labels}))
-    tp=accuracy.eval({X: eval_data1, Y: eval_label1})
-    print("Accuracy label 1:",tp)
-    tn1=accuracy.eval({X: eval_data0, Y: eval_label0})
-    print("Accuracy label 0:", tn1)
-    tn2=accuracy.eval({X: eval_data2, Y: eval_label2})
-    print("Accuracy label 2:", tn2)
-    fn_count = false_negative_percent.eval({X: eval_data2, Y: eval_label2})*len(eval_label2) + false_negative_percent.eval({X: eval_data0, Y: eval_label0})*len(eval_label0)
-    print("total non-fatal features are {0}, fn_count={1}".format(len(eval_data0)+len(eval_data2),fn_count))
-    print("Precision={0},recall={1}".format(tp,tp*len(eval_data1)/(tp*len(eval_data1)+fn_count)))
+    data_x_train,data_y_train,data_x_test,data_y_test,test_dates,fatal_dict=split_train_test(data_x,data_y,dates,fatal_dates,train_max)
+    
+    #normalize_data(data_x_train,data_x_test)
+    '''data_x_train=data_x[0:int(len(data_x)*0.8)]
+    data_y_train=data_y[0:int(len(data_x)*0.8)]
+    data_x_test=data_x[int(len(data_x)*0.8+1):len(data_x)]
+    data_y_test=data_y[int(len(data_y)*0.8+1):len(data_y)]'''
+    #print("last date=",dates[int(len(data_x)*0.8)])
+    summarize_class(data_y_train)
+    replicate_class(table,data_x_train,data_y_train,.6,1,len(data_y_train))
+    print("data augmentation")
+    summarize_class(data_y_train)
+    #data_by_class = split_by_class(data_x_train,data_y_train,table)
+    train_data = format_data(data_x_train,entries)
+    train_labels = nominal_to_int(data_y_train,table)
+    eval_data = format_data(data_x_test,entries)
+    eval_labels = nominal_to_int(data_y_test,table)
+    data_by_class = split_by_class(data_x_test,data_y_test,test_dates,table)
+
+    eval_data0 = format_data(data_by_class[0][0],entries)
+    eval_label0 = nominal_to_int(data_by_class[0][1],table)
+    eval_dates0 = data_by_class[0][2]
+    eval_data1 = format_data(data_by_class[1][0],entries)
+    eval_label1 = nominal_to_int(data_by_class[1][1],table)
+    eval_dates1 = data_by_class[1][2]
+    print("eval 0 has {0}, 1 has {1}".format(eval_label0.shape[0],eval_label1.shape[0]))
+    print(train_data[0].shape,train_labels.shape)
+    
+    regr = linear_model.LinearRegression()
+    regr.fit(train_data[0], train_labels)
+    predict_y = regr.predict(eval_data[0])
+    #print('Coefficients: \n', regr.coef_)
+    count=0.0
+    for i in range(len(eval_labels)):
+        if predict_y[i]<0.5:
+            predict_y[i]=0
+        else:
+            predict_y[i]=1
+        if predict_y[i]==eval_labels[i]:
+            count+=1
+    print('linear regression accuracy={0}'.format(count/len(predict_y)))
+    
+    total_features=train_data[0].shape[0]
+    print('total_features={0}, feature attribute length={1}, convolutional length={2}'.format(total_features,train_data[0].shape[1],train_data[1].shape[2]))
+    model = ConvNet(feature_length=train_data[0].shape[1],sequence_length=train_data[1].shape[2],num_classes=output_size).to(device)
+    result=open('{0}.txt'.format(sys.argv[1]),'w')
+    if retrain==1:
+        model.train()
+        criterion = nn.CrossEntropyLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        batchs = (total_features+batch_size-1)/batch_size
+        for epoch in range(training_epochs):
+            
+            for i in range(0,batchs):
+                if (i+1)*batch_size<total_features:
+                    start=i*batch_size
+                    end=(i+1)*batch_size
+                else:
+                    start=i*batch_size
+                    end=total_features
+                batch_x = train_data[0][start:end]
+                batch_conv_x = train_data[1][start:end]
+                batch_y = train_labels[start:end]
+                #print(batch_x.shape,batch_conv_x.shape,batch_y.shape)
+                batch_conv_x = np.reshape(batch_conv_x,(batch_conv_x.shape[0],1,batch_conv_x.shape[1],batch_conv_x.shape[2]))
+                batch_x = torch.from_numpy(batch_x).float()
+                batch_conv_x = torch.from_numpy(batch_conv_x).float()
+                batch_y = torch.from_numpy(batch_y).long()
+                batch_x = batch_x.to(device)
+                batch_conv_x = batch_conv_x.to(device)
+                labels = batch_y.to(device)
+                # Forward pass
+                outputs = model(batch_conv_x,batch_x)
+                loss = criterion(outputs, labels)
+                # Backward and optimize
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+            
+            print ('Epoch [{0}/{1}], Loss: {2:.4f}'.format(epoch+1, training_epochs, loss.item()))
+            messages=evaluate_model(train_data,train_labels,eval_data0,eval_label0,eval_dates0,eval_data1,eval_label1,eval_dates1,fatal_dict,model)
+            print(messages)
+            result.write(messages+'\n')
+            model.train()
+        # Save the model checkpoint
+        torch.save(model.state_dict(), '{0}_model.ckpt'.format(sys.argv[1]))
+    else:
+        model.load_state_dict(torch.load('{0}_model.ckpt'.format(sys.argv[1])))
+        messages=evaluate_model(train_data,train_labels,eval_data0,eval_label0,eval_dates0,eval_data1,eval_label1,eval_dates1,fatal_dict,model)
+        print(messages)
+        result.write(messages+'\n')
+    result.close()

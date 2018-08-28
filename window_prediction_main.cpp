@@ -24,7 +24,7 @@ int main(int argc,char** argv){
 		sprintf(header,"%d",i);
 		attributes->push_back(std::string(header));
 	}
-	write_features(result,result_file_name,attributes);
+	write_features(result,result_file_name,attributes,10);
 	printf("Feature write to local file finished\n");
 	delete warn_dates;
 	delete fatal_dates;

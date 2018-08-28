@@ -27,9 +27,9 @@ int main(int argc,char** argv){
 	std::vector<Feature> *result=feature_matching(warn_t_clusters,fatal_t_clusters,warn_st_clusters,fatal_st_clusters,warn_dates,fatal_dates,warn_table,fatal_table,attributes,location_level,warn_max_count);
 	printf("Feature matching finished\n");
 	char result_file_name[2000];
-	sprintf(result_file_name,"st_features_%d_%d_%d_%d_%d.csv",t_cluster_threshold1,t_cluster_threshold2,s_cluster_threshold1,s_cluster_threshold2,location_level);
-	write_features(result,result_file_name,attributes);
-	printf("Feature write to local file finished\n");
+	sprintf(result_file_name,"st_features_%d_%d_%d_%d_%d_%d.csv",t_cluster_threshold1,t_cluster_threshold2,s_cluster_threshold1,s_cluster_threshold2,location_level,warn_max_count);
+	write_features(result,result_file_name,attributes,warn_max_count);
+	printf("Feature write to local file finished %s\n",result_file_name);
 	char filename[200];
 	std::vector<std::string>* fatal_attributes=read_attributes("fatal_attributes.txt");
 	std::vector<std::vector<DTYPE>*>* fatal_features=st_cluster_to_features(fatal_st_clusters,fatal_table,fatal_attributes);

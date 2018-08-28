@@ -117,21 +117,48 @@ void write_clusters(const char* filename,std::vector<std::vector<DTYPE>*>* clust
 	fclose(stream);
 }
 
-void write_features(std::vector<Feature> *features,const char* filename,std::vector<std::string>* attributes){
+void write_features(std::vector<Feature> *features,const char* filename,std::vector<std::string>* attributes,DWORD max_count){
 	FILE* stream=fopen(filename,"w");
 	unsigned i,j;
 	for(i=0;i<attributes->size();i++){
 		fprintf(stream,"%s,",attributes[0][i].c_str());
 	}
+	//printf("%ld\n",features[0][0].features->size());
+	for(i=0;i<(unsigned)(max_count-1);i++){
+		fprintf(stream,"TEMPORAL_INTERVAL_%05d,",i);
+	}
+	for(i=0;i<(unsigned)(max_count-1);i++){
+		fprintf(stream,"SPATIAL_INTERVAL_%05d,",i);
+	}
+	for(i=0;i<4;i++){
+		fprintf(stream,"SPATIAL_LOCATIONS_%05d,",i);
+	}
+	fprintf(stream,"MEAN_INTERVAL,");
+	fprintf(stream,"LAST_FATAL,");
 	fprintf(stream,"LEAD_TIME,");
 	fprintf(stream,"DATE,");
+	fprintf(stream,"LOCATION_PINPOINT,");
+	fprintf(stream,"FATAL_START_DATE,");
 	fprintf(stream,"FATAL\n");
 	for(i=0;i<features->size();i++){
+		//printf("write line size=%ld\n",features[0][i].features->size());
 		for(j=0;j<features[0][i].features->size();j++){
-			fprintf(stream,"%f,",features[0][i].features[0][j]);
+			if(features[0][i].features[0][j]==0){
+				fprintf(stream,"%d,",0);
+			}else{
+				if(j<attributes->size()){
+					fprintf(stream,"%4f,",features[0][i].features[0][j]);
+				}else{
+					fprintf(stream,"%d,",(DWORD)features[0][i].features[0][j]);
+				}
+			}
 		}
+		fprintf(stream,"%d,",(DWORD)features[0][i].mean_interval);
+		fprintf(stream,"%d,",(DWORD)features[0][i].last_fatal);
 		fprintf(stream,"%d,",features[0][i].lead_time);
 		fprintf(stream,"%d,",features[0][i].start_date);
+		fprintf(stream,"%4f,",features[0][i].location_pinpoint);
+		fprintf(stream,"%d,",features[0][i].fatal_start_date);
 		fprintf(stream,"%d\n",features[0][i].label);
 	}
 	fclose(stream);

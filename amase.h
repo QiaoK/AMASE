@@ -42,6 +42,10 @@ typedef struct{
 	DWORD label;
 	DWORD lead_time;
 	DWORD start_date;
+	DWORD fatal_start_date;
+	DTYPE last_fatal;
+	DTYPE mean_interval;
+	DTYPE location_pinpoint;
 }Feature;
 
 typedef struct{
