@@ -11,6 +11,11 @@ import csv
 import math
 import sys
 from sklearn import metrics
+from training_lib import train_max
+from training_lib import split_train_test
+from training_lib import nominal_to_int
+from training_lib import format_data
+from training_lib import split_by_class
 
 # Device configuration
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -88,51 +93,6 @@ def create_nominal_table(data_y):
       table[nominals[i]]=i
     return table
 
-def nominal_to_int(data_y,table):
-    '''
-    result=np.zeros([len(data_y),len(table)])
-    for i in range(0,len(data_y)):
-        result[i,table[data_y[i]]]=1
-    return result
-    '''
-    return np.asarray(data_y)
-
-def split_by_class(data_x,data_y,dates,table):
-  result={}
-  for t in table:
-    result[table[t]]=[[],[],[]]
-  for i in range(len(data_y)):
-    result[table[data_y[i]]][0].append(data_x[i])
-    result[table[data_y[i]]][1].append(data_y[i])
-    result[table[data_y[i]]][2].append(dates[i])
-  return result
-
-
-def format_data(data,entries):
-    feature_names=[]
-    conv_names=[]
-    for k in entries:
-        if 'TEMPORAL_INTERVAL' in k or 'SPATIAL_INTERVAL' in k:
-            conv_names.append(k)
-        else:
-            feature_names.append(k)
-    conv_names.sort()
-    features=np.empty((len(data),len(feature_names)))
-    conv_features=np.empty((len(data),2,len(conv_names)/2))
-    for i in range(len(data)):
-        for j in range(0,len(feature_names)):
-            features[i,j]=data[i][feature_names[j]]
-        count1=0
-        count2=0
-        for j in range(0,len(conv_names)):
-            if 'TEMPORAL' in conv_names[j]:
-                conv_features[i,0,count1]=data[i][conv_names[j]]
-                count1+=1
-            else:
-                conv_features[i,1,count2]=data[i][conv_names[j]]
-                count2+=1
-    return [features,conv_features]
-
 def replicate_class(table,data_x,data_y,percent,name,size):
   new_data_x=[]
   new_data_y=[]
@@ -185,30 +145,7 @@ def clustering(fatal_feature,k):
   result=fcluster(linkage(dist, method='single'), k-1, 'maxclust')
   return result
 
-def split_train_test(data_x,data_y,dates,fatal_dates,train_max):
-  data_x_train=[]
-  data_y_train=[]
-  data_x_test=[]
-  data_y_test=[]
-  test_dates=[]
-  fatal_dict={}
-  fatal_clusters=set()
-  for i in range(len(data_x)):
-    if data_y[i]==1:
-      fatal_clusters.add(fatal_dates[i])
-    if dates[i]<=train_max:
-      data_x_train.append(data_x[i])
-      data_y_train.append(data_y[i])
-    else:
-      data_x_test.append(data_x[i])
-      data_y_test.append(data_y[i])
-      test_dates.append(dates[i])
-      if data_y[i]==1:
-        if dates[i] not in fatal_dict:
-          fatal_dict[dates[i]]=set()
-        fatal_dict[dates[i]].add(fatal_dates[i])
-  print("train:test={0}:{1},{2},total fatal clusters={3}".format(len(data_x_train),len(data_x_test),(0.0+len(data_x_train))/len(data_x),len(fatal_clusters)))
-  return data_x_train,data_y_train,data_x_test,data_y_test,test_dates,fatal_dict
+
 
 def summarize_class(data):
     tmp0=0
@@ -249,6 +186,7 @@ def read_data(filename):
             del x["DATE"]
             del x["FATAL_START_DATE"]
             del x["LOCATION_PINPOINT"]
+            del x["LOCATION_RECOVERY"]
             for k in x:
                 x[k]=float(x[k])
             data_x.append(x)
@@ -396,7 +334,6 @@ if __name__ == "__main__":
     random.seed(5555)
     torch.manual_seed(5555)
     torch.cuda.manual_seed_all(5555)
-    train_max=1462075200
     training_epochs=int(sys.argv[2])
     retrain=int(sys.argv[3])
     data_x,data_y,dates,fatal_dates=read_data(sys.argv[1])

@@ -144,6 +144,22 @@ DWORD st_cluster_size(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>
 	return result;
 }
 
+DWORD st_cluster_size_by_date(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* st_clusters,std::vector<DWORD> *dates,DWORD date_limit){
+	unsigned i,j,k;
+	DWORD result=0;
+	for(i=0;i<st_clusters->size();i++){
+		for(j=0;j<st_clusters[0][i]->size();j++){
+			for(k=0;k<st_clusters[0][i][0][j]->size();k++){
+				if(dates[0][st_clusters[0][i][0][j][0][k][0][0]]>date_limit){
+					result++;
+				}
+			}
+		}
+	}
+	return result;
+}
+
+
 std::map<std::vector<DWORD>*,DWORD>* cluster_ranking(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* st_clusters){
 	std::map<std::vector<DWORD>*,DWORD>* result=new std::map<std::vector<DWORD>*,DWORD>;
 	unsigned i,j,k;
@@ -208,7 +224,7 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 	std::vector<DTYPE>* feature;
 	std::vector<DTYPE>* intervals=new std::vector<DTYPE>;
 	std::vector<DTYPE>* spatial_intervals=new std::vector<DTYPE>;
-	DWORD next_window_end=stripe+warn_max_count,last_fatal=-1,mean_interval=0;
+	DWORD next_window_end=stripe+warn_max_count,last_fatal=-1,mean_interval=0,total_warn_count=0,qualified_warn_count;
 	WORD failure=0;
 	DWORD location_match;
 	std::set<std::string>::iterator it;
@@ -233,8 +249,9 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
 
 	std::vector<std::string> *remove_list=new std::vector<std::string>;
-	std::set<std::string>* warn_locations=new std::set<std::string>;
-	
+	std::map<std::string,DWORD>* warn_locations=new std::map<std::string,DWORD>;
+	std::map<std::string,DWORD>::iterator it4;	
+
 	std::vector<std::set<std::string>*>* warn_location_counts=new std::vector<std::set<std::string>*>(4);
 	for(i=0;i<warn_location_counts->size();i++){
 		warn_location_counts[0][i]=new std::set<std::string>;
@@ -251,13 +268,20 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 				element.label=1;
 				failure=1;
 				location_match=0;
+				total_warn_count=0;
 				//printf("%ld\n",warn_locations->size());
 				remove_list->clear();
 				//Try to match the fatal locations.
+				qualified_warn_count=0;
 				for(it=fatal_cluster_locations[0][fatal_index]->begin();it!=fatal_cluster_locations[0][fatal_index]->end();++it){
-					if(warn_locations->find(*it)!=warn_locations->end()){
+					if(warn_locations->find(*it)!=warn_locations->end()&&(warn_locations[0][*it]+.0)/total_warn_count>=0){
 						location_match++;
 						remove_list->push_back(*it);
+					}
+				}
+				for(it4=warn_locations->begin();it4!=warn_locations->end();++it4){
+					if((it4->second+.0)/total_warn_count>=0){
+						qualified_warn_count++;
 					}
 				}
 				//Erase those fatal locations that can be deduced from the warn location. The remainings are unpredictable locations.
@@ -265,16 +289,12 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 					fatal_cluster_locations[0][fatal_index]->erase(*it2);
 				}
 				//Compute predictable percentage of fatal locations.
-				element.location_pinpoint=location_match/fatal_cluster_location_count[0][fatal_index];
+				element.location_pinpoint=(location_match+.0)/fatal_cluster_location_count[0][fatal_index];
+				element.location_recovery=(location_match+.0)/qualified_warn_count;
 			}else{
 				element.label=-1;
 			}
-			//Compute lead time
-			if(fatal_index<fatal_cluster_start->size()){
-				element.lead_time=fatal_dates[0][fatal_cluster_start[0][fatal_index]]-warn_dates[0][warn_cluster[0][i-1]];
-			}else{
-				element.lead_time=-1;
-			}
+			element.lead_time=-1;
 			//Write down start date of the feature, useful for dividing test set.
 			element.start_date=warn_dates[0][warn_cluster[0][i-1]];
 			//Compute mean interval of cluster events.
@@ -293,9 +313,13 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 				}
 			}else if(only_fatal==0||element.label==1){
 				if(element.label==1){
+					//Compute lead time
+					element.lead_time=fatal_dates[0][fatal_cluster_start[0][fatal_index]]-warn_dates[0][warn_cluster[0][i-1]];
 					element.fatal_start_date=fatal_dates[0][fatal_cluster_start[0][fatal_index]];
 				}else{
 					element.fatal_start_date=-1;
+					element.location_pinpoint=-1;
+					element.location_recovery=-1;
 				}
 				//construct feature for the warn cluster in the previous window
 				feature=new std::vector<DTYPE>(attributes->size()+2*(warn_max_count-1)+warn_location_counts->size());
@@ -331,17 +355,24 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 					last_fatal=fatal_dates[0][fatal_cluster_start[0][fatal_index]];
 					//Figure out location features (how many we recovered?)
 					location_match=0;
+					qualified_warn_count=0;
 					remove_list->clear();
 					for(it=fatal_cluster_locations[0][fatal_index]->begin();it!=fatal_cluster_locations[0][fatal_index]->end();++it){
-						if(warn_locations->find(*it)!=warn_locations->end()){
+						if(warn_locations->find(*it)!=warn_locations->end()&&(warn_locations[0][*it]+.0)/total_warn_count>=0){
 							location_match++;
 							remove_list->push_back(*it);
+						}
+					}
+					for(it4=warn_locations->begin();it4!=warn_locations->end();++it4){
+						if((it4->second+.0)/total_warn_count>=0){
+							qualified_warn_count++;
 						}
 					}
 					for(it2=remove_list->begin();it2!=remove_list->end();++it2){
 						fatal_cluster_locations[0][fatal_index]->erase(*it2);
 					}
-					element.location_pinpoint=location_match/fatal_cluster_location_count[0][fatal_index];
+					element.location_pinpoint=(location_match+.0)/fatal_cluster_location_count[0][fatal_index];
+					element.location_recovery=(location_match+.0)/qualified_warn_count;
 					element.fatal_start_date=fatal_dates[0][fatal_cluster_start[0][fatal_index]];
 					//construct another feature
 					if(only_fatal==0){
@@ -355,6 +386,7 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 			spatial_intervals->clear();
 			feature_count->clear();
 			warn_locations->clear();
+			total_warn_count=0;
 			for(j=0;j<warn_location_counts->size();j++){
 				warn_location_counts[0][j]->clear();
 			}
@@ -403,7 +435,12 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 		Free(feature_name);
 		feature_name=extract_location_level(table[0][COL_LOCATION][0][warn_cluster[0][i]],CLUSTER_LOCATION);
 		std::string s2(feature_name);
-		warn_locations->insert(s2);
+		total_warn_count++;
+		if(warn_locations->find(s2)==warn_locations->end()){
+			warn_locations[0][s2]=1;
+		}else{
+			warn_locations[0][s2]+=1;
+		}
 		Free(feature_name);
 
 		for(j=0;j<warn_location_counts->size();j++){
@@ -442,6 +479,7 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 	char* fatal_location,*warn_location,*tmp_str;
 	char* feature_name;
 	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
+	DWORD fatal_recovery_count=0;
 	std::vector<DTYPE>* fatal_recovery_rate=new std::vector<DTYPE>;
 	std::vector<DTYPE>* fatal_locations=new std::vector<DTYPE>;
 	//Iterate through all warning
@@ -534,10 +572,12 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 				warn_fatal_bind(warn_table,warn_s_clusters[0][w], fatal_cluster_start, fatal_cluster_end,fatal_cluster_location_count,fatal_cluster_locations,warn_dates,fatal_dates,attributes, result,warn_max_count/2,warn_max_count,0,&temp2);
 				insufficient_information+=temp;
 				if(fatal_cluster_start->size()>0){
-				for(j=temp;j<fatal_cluster_locations->size();++j){
-					fatal_recovery_rate->push_back(1.0-(.0+fatal_cluster_locations[0][j]->size())/fatal_cluster_location_count[0][j]);
-					fatal_locations->push_back(fatal_cluster_location_count[0][j]);
-				}
+					for(j=temp;j<fatal_cluster_locations->size();++j){
+						//fatal_recovery_rate->push_back(1.0-(.0+fatal_cluster_locations[0][j]->size())/fatal_cluster_location_count[0][j]);
+						fatal_recovery_count+=fatal_cluster_location_count[0][j];
+						fatal_recovery_rate->push_back(fatal_cluster_locations[0][j]->size());
+						fatal_locations->push_back(fatal_cluster_location_count[0][j]);
+					}
 				}
 			}else{
 				//No fatal cluster overlaps with the current warn clsuter, construct current feature with 0.
@@ -579,7 +619,8 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 		fatal_recovery_mean+=fatal_recovery_rate[0][i];
 		fatal_location_mean+=fatal_locations[0][i];
 	}
-	fatal_recovery_mean/=fatal_recovery_rate->size();
+	//fatal_recovery_mean/=fatal_recovery_rate->size();
+	fatal_recovery_mean=1-fatal_recovery_mean/fatal_recovery_count;
 	fatal_location_mean/=fatal_recovery_rate->size();
 	printf("total_features=%ld,fatal_size=%d,unknown cause=%lf,insufficient information=%lf,fatal location recovery=%lf,fatal location size=%lf\n",result->size(),(DWORD)fatal_size,(fatal_size-count)/fatal_size,insufficient_information/fatal_size,fatal_recovery_mean,fatal_location_mean);
 	delete sub_fatal_clusters;

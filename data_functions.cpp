@@ -117,6 +117,44 @@ void write_clusters(const char* filename,std::vector<std::vector<DTYPE>*>* clust
 	fclose(stream);
 }
 
+void write_window_features(std::vector<Feature> *features,const char* filename,std::vector<std::string>* attributes){
+	FILE* stream=fopen(filename,"w");
+	unsigned i,j;
+	for(i=0;i<attributes->size();i++){
+		fprintf(stream,"%s,",attributes[0][i].c_str());
+	}
+	fprintf(stream,"LEAD_TIME,");
+	fprintf(stream,"DATE,");
+	fprintf(stream,"LOCATION_PINPOINT,");
+	fprintf(stream,"LOCATION_RECOVERY,");
+	fprintf(stream,"WARN_LOCATIONS,");
+	fprintf(stream,"FATAL_LOCATIONS,");
+	fprintf(stream,"FATAL_START_DATE,");
+	fprintf(stream,"FATAL\n");
+	for(i=0;i<features->size();i++){
+		//printf("write line size=%ld\n",features[0][i].features->size());
+		for(j=0;j<features[0][i].features->size();j++){
+			if(features[0][i].features[0][j]==0){
+				fprintf(stream,"%d,",0);
+			}else{
+				if(j<attributes->size()){
+					fprintf(stream,"%4f,",features[0][i].features[0][j]);
+				}else{
+					fprintf(stream,"%d,",(DWORD)features[0][i].features[0][j]);
+				}
+			}
+		}
+		fprintf(stream,"%d,",features[0][i].lead_time);
+		fprintf(stream,"%d,",features[0][i].start_date);
+		fprintf(stream,"%4f,",features[0][i].location_pinpoint);
+		fprintf(stream,"%4f,",features[0][i].location_recovery);
+		fprintf(stream,"%d,",features[0][i].warn_location_size);
+		fprintf(stream,"%d,",features[0][i].fatal_location_size);
+		fprintf(stream,"%d,",features[0][i].fatal_start_date);
+		fprintf(stream,"%d\n",features[0][i].label);
+	}
+}
+
 void write_features(std::vector<Feature> *features,const char* filename,std::vector<std::string>* attributes,DWORD max_count){
 	FILE* stream=fopen(filename,"w");
 	unsigned i,j;
@@ -138,6 +176,7 @@ void write_features(std::vector<Feature> *features,const char* filename,std::vec
 	fprintf(stream,"LEAD_TIME,");
 	fprintf(stream,"DATE,");
 	fprintf(stream,"LOCATION_PINPOINT,");
+	fprintf(stream,"LOCATION_RECOVERY,");
 	fprintf(stream,"FATAL_START_DATE,");
 	fprintf(stream,"FATAL\n");
 	for(i=0;i<features->size();i++){
@@ -158,6 +197,7 @@ void write_features(std::vector<Feature> *features,const char* filename,std::vec
 		fprintf(stream,"%d,",features[0][i].lead_time);
 		fprintf(stream,"%d,",features[0][i].start_date);
 		fprintf(stream,"%4f,",features[0][i].location_pinpoint);
+		fprintf(stream,"%4f,",features[0][i].location_recovery);
 		fprintf(stream,"%d,",features[0][i].fatal_start_date);
 		fprintf(stream,"%d\n",features[0][i].label);
 	}
