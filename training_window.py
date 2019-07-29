@@ -175,7 +175,7 @@ def split_train_test(data_x,data_y,dates,train_max):
 
 if __name__ == "__main__":
   # Load training and eval data
-  train_max=1462075200
+  train_max=1462512550
   training_epochs=int(sys.argv[2])
   tf.set_random_seed(5555)
   data_x=[]

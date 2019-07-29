@@ -93,7 +93,53 @@ std::vector<std::vector<char*>*>* read_table(const char* filename){
 	return inputs;
 }
 
-void write_clusters(const char* filename,std::vector<std::vector<DTYPE>*>* clusters,std::vector<std::string>* attributes){
+void write_streaming_features(const char* filename,std::vector<StreamingFeature>* clusters,std::vector<std::string>* attributes,DWORD lead_time_size){
+	FILE* stream=fopen(filename,"w");
+	unsigned i,j;
+
+	for(i=0;i<attributes->size();i++){
+		fprintf(stream,"%s,",attributes[0][i].c_str());
+	}
+	for(i=0;i<clusters[0][0].temporal_diff->size();i++){
+		fprintf(stream,"TEMPORAL_INTERVAL_%05d,",i);
+	}
+	for(i=0;i<(unsigned)lead_time_size;i++){
+		fprintf(stream,"LEAD_TIME_%d_NOT_FEATURE,",i+1);
+	}
+	for(i=0;i<4;i++){
+		fprintf(stream,"LOCATION_RECOVERY_%d_NOT_FEATURE,",i+1);
+	}
+	fprintf(stream,"LOCATION_0,LOCATION_1,LOCATION_2,LOCATION_3,LAST_FATAL,FATAL_INDEX_NOT_FEATURE,TIME_SPAN,DATE_NOT_FEATURE\n");
+	for(i=0;i<clusters->size();i++){
+		for(j=0;j<clusters[0][i].features->size();j++){
+			if(clusters[0][i].features[0][j]==0){
+				fprintf(stream,"0,");
+			}else{
+				fprintf(stream,"%f,",clusters[0][i].features[0][j]);
+			}
+		}
+		for(j=0;j<clusters[0][0].temporal_diff->size();j++){
+			fprintf(stream,"%d,",clusters[0][i].temporal_diff[0][j]);
+		}
+		for(j=0;j<(unsigned)lead_time_size;j++){
+			fprintf(stream,"%d,",clusters[0][i].lead_times[0][j]);
+		}
+		for(j=0;j<4;j++){
+			if (clusters[0][i].fatal_index!=-1){
+				fprintf(stream,"%lf,",clusters[0][i].location_recovery[0][j]);
+			}else{
+				fprintf(stream,"0,");
+			}
+		}
+		for(j=0;j<4;j++){
+			fprintf(stream,"%d,",clusters[0][i].location_counts[0][j]);
+		}
+		fprintf(stream,"%d,%d,%d,%d\n",clusters[0][i].last_fatal,clusters[0][i].fatal_index,clusters[0][i].time_span,clusters[0][i].start_date);
+	}
+	fclose(stream);
+}
+
+void write_clusters(const char* filename,std::vector<FatalCluster>* clusters,std::vector<std::string>* attributes){
 	FILE* stream=fopen(filename,"w");
 	unsigned i,j;
 	for(i=0;i<attributes->size();i++){
@@ -103,16 +149,16 @@ void write_clusters(const char* filename,std::vector<std::vector<DTYPE>*>* clust
 			fprintf(stream,"%s",attributes[0][i].c_str());
 		}
 	}
-	fprintf(stream,"\n");
+	fprintf(stream,",EVENT_SIZE,START_DATE,END_DATA,FATAL_INDEX\n");
 	for(i=0;i<clusters->size();i++){
-		for(j=0;j<clusters[0][i]->size();j++){
-			if(j<clusters[0][i]->size()-1){
-				fprintf(stream,"%f,",clusters[0][i][0][j]);
+		for(j=0;j<clusters[0][i].features->size();j++){
+			if(j<clusters[0][i].features->size()-1){
+				fprintf(stream,"%f,",clusters[0][i].features[0][j]);
 			}else{
-				fprintf(stream,"%f",clusters[0][i][0][j]);
+				fprintf(stream,"%f",clusters[0][i].features[0][j]);
 			}
 		}
-		fprintf(stream,"\n");
+		fprintf(stream,",%d,%d,%d,%d\n",clusters[0][i].event_size,clusters[0][i].start_date,clusters[0][i].end_date,i);
 	}
 	fclose(stream);
 }
@@ -206,8 +252,8 @@ void write_features(std::vector<Feature> *features,const char* filename,std::vec
 
 std::vector<DWORD>* chars2ints(std::vector<char*>* inputs){
 	std::vector<DWORD>* result=new std::vector<DWORD>(inputs->size());
-	WORD i;
-	for(i=0;i<(WORD)inputs->size();i++){
+	unsigned i;
+	for(i=0;i<inputs->size();i++){
 		result[0][i]=atoi(inputs[0][i]);
 	}
 	return result;

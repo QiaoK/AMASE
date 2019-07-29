@@ -9,7 +9,27 @@ import csv
 import math
 import sys
 from sklearn import metrics
-train_max=1462075200
+#train_max=1462078800
+#train_max=1483250400
+train_max=1514786400
+def filter_fatal_index(fatal_event_file,key_words):
+    result = set()
+    key_set = None
+    with open(fatal_event_file) as csvfile:
+        reader = csv.DictReader(csvfile)
+        for x in reader:
+            check = 0
+            if key_set is None:
+                key_set = x.keys()
+            for k in key_set:
+                for word in key_words:
+                    if word in k and float(x[k])>0:
+                        check = 1
+                        break
+            if check == 1:
+                result.add(x['FATAL_INDEX'])
+    return result
+
 def nominal_to_int(data_y,table):
     '''
     result=np.zeros([len(data_y),len(table)])

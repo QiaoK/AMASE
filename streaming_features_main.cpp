@@ -2,11 +2,10 @@
 
 int main(int argc,char** argv){
 	DWORD window_size,lead_time_count,t_cluster_threshold;
-	if(argc!=7){
-		printf("Usage:./st_clustering filename1 filename2 fatal_t_threshold window_size lead_time_count location_level\n");
+	if(argc!=6){
+		printf("Usage:./streaming_feature filename1 filename2 fatal_t_threshold window_size lead_time_count\n");
 		return 1;
 	}
-	DWORD test_start_date=1462075200;
 	std::vector<std::vector<char*>*>* warn_table=read_table(argv[1]);
 	std::vector<std::vector<char*>*>* fatal_table=read_table(argv[2]);
 	std::vector<DWORD>* warn_dates=chars2ints(warn_table[0][COL_DATE]);
@@ -14,15 +13,31 @@ int main(int argc,char** argv){
 	t_cluster_threshold=atoi(argv[3]);	
 	window_size=atoi(argv[4]);
 	lead_time_count=atoi(argv[5]);
-	location_level=atoi(argv[6]);
+	printf("cluster h=%d, window size=%d,lead_times=%d\n",t_cluster_threshold,window_size,lead_time_count);
 	std::vector<std::string>* attributes=read_attributes("sys_attributes.txt");
+	std::vector<std::string>* fatal_attributes=read_attributes("fatal_attributes.txt");
+	std::vector<std::string>* filter_attributes=read_attributes("filter_attributes.txt");
 
 	printf("Data read finished\n");
 	std::vector<Interval>* fatal_t_clusters=temporal_clustering(fatal_dates,t_cluster_threshold);
-	std::vector<Feature>* fatal_features=st_cluster_to_features(fatal_t_clusters,fatal_table,fatal_dates,attributes);
+	std::vector<FatalCluster>* fatal_features=st_cluster_to_features(fatal_t_clusters,fatal_table,fatal_dates, fatal_attributes,filter_attributes);
+	printf("total number of fatal_features=%ld, size of attributes=%ld\n",fatal_features->size(),filter_attributes->size());
 	printf("ST clustering for fatal events finished\n");
 
-	std::vector<StreamingFeature>* features=streaming_feature(warn_table, warn_dates,attributes,fatal_clusters,lead_time_size,window_size);
+	std::vector<StreamingFeature>* features=streaming_feature(warn_table,fatal_table, warn_dates,attributes,fatal_features,lead_time_count,window_size);
 	printf("Streaming feature construction finished\n");
+	char filename[200];
+	sprintf(filename,"streaming_features_%d_%d_%d.csv",window_size,t_cluster_threshold,lead_time_count);
+	write_streaming_features(filename,features,attributes,lead_time_count);
+	printf("Streaming feature writeback finished\n");
+
+	delete attributes;
+	delete fatal_attributes;
+	delete filter_attributes;
+
+	delete warn_dates;
+	delete fatal_dates;
+	delete_table(warn_table);
+	delete_table(fatal_table);
 	return 0;
 }

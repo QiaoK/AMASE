@@ -250,7 +250,7 @@ void warn_fatal_bind(std::vector<std::vector<char*>*>* table,std::vector<DWORD>*
 
 	std::vector<std::string> *remove_list=new std::vector<std::string>;
 	std::map<std::string,DWORD>* warn_locations=new std::map<std::string,DWORD>;
-	std::map<std::string,DWORD>::iterator it4;	
+	std::map<std::string,DWORD>::iterator it4;
 
 	std::vector<std::set<std::string>*>* warn_location_counts=new std::vector<std::set<std::string>*>(4);
 	for(i=0;i<warn_location_counts->size();i++){
@@ -474,8 +474,8 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 	std::vector<std::set<std::string>*> *fatal_cluster_locations=new std::vector<std::set<std::string>*>;
 	std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* sub_fatal_clusters=new std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>;
 	unsigned i,j,k,w,t;
-	DWORD warn_start,warn_end,fatal_start;
-	DWORD warn_start2,warn_end2,fatal_start2;
+	DWORD warn_start, warn_start2,warn_end,fatal_start;
+	DWORD fatal_start2;
 	char* fatal_location,*warn_location,*tmp_str;
 	char* feature_name;
 	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
@@ -511,7 +511,6 @@ std::vector<Feature> *feature_matching(std::vector<Interval>* warn_t_clusters,st
 			fatal_cluster_location_count->clear();
 			Feature feature;
 			warn_start2=warn_s_clusters[0][w][0][0];
-			warn_end2=warn_s_clusters[0][w][0][warn_s_clusters[0][w]->size()-1];
 			feature.label=0;
 			feature.lead_time=-1;
 			feature.last_fatal=-1;
@@ -668,14 +667,16 @@ void delete_st_clusters(std::vector<std::vector<std::vector<std::vector<DWORD>*>
 	delete st_clusters;
 }
 
-std::vector<DTYPE>* extract_cluster_features(std::vector<DWORD>* cluster,std::vector<std::vector<char*>*>* table,std::vector<std::string>* attributes){
+//The following code are for streaming features.
+
+std::vector<DTYPE>* extract_cluster_features(std::vector<std::vector<char*>*>* table,std::vector<std::string>* attributes, std::vector<int>* critical_attribute_index, DWORD start, DWORD end){
 	unsigned i,index;
 	char* feature_name;
 	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
 	std::vector<DTYPE>* result=new std::vector<DTYPE>(attributes->size());
 	//Count number of features for every tuple (COMPONENT,CATEGORY,SEVERITY)
-	for(i=0;i<cluster->size();i++){
-		index=cluster[0][i];
+	for(i=start;i<(unsigned)end;i++){
+		index=i;
 		feature_name=str_join(table[0][COL_COMPONENT][0][index],table[0][COL_CATEGORY][0][index],table[0][COL_SEVERITY][0][index]);
 		std::string s(feature_name);
 		//std::cout<<s<<"\n";
@@ -688,27 +689,58 @@ std::vector<DTYPE>* extract_cluster_features(std::vector<DWORD>* cluster,std::ve
 	}
 	for(i=0;i<attributes->size();i++){
 		std::string s=attributes[0][i];
-		if(feature_count->find(s)==feature_count->end()){
+		if (feature_count->find(s)==feature_count->end()){
 			result[0][i]=0;
 		}else{
-			result[0][i]=feature_count[0][s]/((DTYPE)cluster->size());
+			result[0][i]=feature_count[0][s]/(end-start+0.0);
 			//std::cout<<result[0][i]<<"\n";
 		}
+	}
+        int check = 0;
+	for (i=0; i < critical_attribute_index->size(); i++){
+		if (result[0][critical_attribute_index[0][i]]>0){
+			check = 1;
+			break;
+		}
+	}
+	if (check==0){
+		delete result;
+		result = NULL;
 	}
 	delete feature_count;
 	return result;
 }
 
-std::vector<std::vector<DTYPE>*>* st_cluster_to_features(std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* st_clusters,std::vector<std::vector<char*>*>* table,std::vector<std::string>* attributes){
-	std::vector<std::vector<DTYPE>*>* result=new std::vector<std::vector<DTYPE>*>;
-	unsigned i,j,k;
-	for(i=0;i<st_clusters->size();i++){
-		for(j=0;j<st_clusters[0][i]->size();j++){
-			for(k=0;k<st_clusters[0][i][0][j]->size();k++){
-				result->push_back(extract_cluster_features(st_clusters[0][i][0][j][0][k],table,attributes));
-			}
+std::vector<FatalCluster>* st_cluster_to_features(std::vector<Interval>* st_clusters,std::vector<std::vector<char*>*>* table,std::vector<DWORD> *dates,std::vector<std::string>* attributes,std::vector<std::string> *filter_attributes){
+	std::vector<FatalCluster>* result=new std::vector<FatalCluster>;
+	FatalCluster f;
+	unsigned i,j;
+	int check;
+        std::vector<int>* critical_attribute_index = new std::vector<int>;
+	for (i=0; i<attributes->size(); i++){
+		check = 0;
+		for (j=0; j<filter_attributes->size(); j++){
+			if (attributes[0][i].find(filter_attributes[0][j]) != std::string::npos){
+				check =1;
+				break;
+        		}
+		}
+		if (check==1){
+			critical_attribute_index->push_back(i);
 		}
 	}
+	for(i=0;i<st_clusters->size();i++){
+		f.features=extract_cluster_features(table,attributes,critical_attribute_index, st_clusters[0][i].start,st_clusters[0][i].end);
+		if (f.features!=NULL){
+                        f.start=st_clusters[0][i].start;
+                        f.end=st_clusters[0][i].end;
+			f.start_date=dates[0][st_clusters[0][i].start];
+			f.end_date=dates[0][st_clusters[0][i].end-1];
+			f.event_size=st_clusters[0][i].end-st_clusters[0][i].start;
+			result->push_back(f);
+		}
+	}
+	delete critical_attribute_index;
 	return result;
 }
 
@@ -804,79 +836,217 @@ std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* cluster_filter(std
 	return result;
 }
 
-/*
-std::vector<std::string>* read_attributes(const char* filename){
-	std::vector<std::string>* result=new std::vector<std::string>;
-	FILE* stream1=fopen(filename,"r");
-	char c;
-	std::string *s=new std::string;
-	while((c=fgetc(stream1))!=EOF){
-		if(c=='\n'){
-			if(s->length()>0){
-				result->push_back(*s);
-			}
-			s->clear();
-		}else{
-			s->push_back(c);
+void construct_streaming_feature(std::vector<FatalCluster>* fatal_clusters,std::vector<DWORD>* warn_dates,std::vector<DWORD>* attribute_column,std::vector<std::vector<DWORD>*> *location_columns,std::vector<std::vector<DWORD>*> *fatal_location_columns,DWORD attribute_size,DWORD start,DWORD end,DWORD window_size,DWORD fatal_index,DWORD lead_time_size, StreamingFeature* feature){
+	std::vector<DWORD> *feature_count=new std::vector<DWORD>(attribute_size);
+	std::fill(feature_count->begin(),feature_count->end(),0);
+	DWORD i,j,k;
+	std::vector<std::set<DWORD>*> *location_sets=new std::vector<std::set<DWORD>*>(4);
+	std::vector<std::set<DWORD>*> *fatal_location_sets=new std::vector<std::set<DWORD>*>(4);
+	std::set<DWORD>::iterator it;
+	for(i=0;i<4;i++){
+		location_sets[0][i]=new std::set<DWORD>;
+		fatal_location_sets[0][i]=new std::set<DWORD>;
+	}
+	for(i=start;i<end;i++){
+		feature_count[0][attribute_column[0][i]]+=1;
+		for(j=0;j<4;j++){
+			location_sets[0][j]->insert(location_columns[0][j][0][i]);
 		}
 	}
-	delete s;
-	fclose(stream1);
+	feature->start_date=warn_dates[0][start];
+	feature->time_span=warn_dates[0][end-1]-warn_dates[0][start];
+	feature->features=new std::vector<DTYPE>(attribute_size);
+	feature->location_counts=new std::vector<DWORD>(4);
+	feature->temporal_diff=new std::vector<DWORD>(window_size-1);
+	for(i=0;i<window_size-1;i++){
+		feature->temporal_diff[0][i]=warn_dates[0][i+1]-warn_dates[0][i];
+	}
+	for(i=0;i<attribute_size;++i){
+		//feature->features[0][i]=feature_count[0][i]/(end-start+.0);
+		feature->features[0][i]=feature_count[0][i];
+	}
+	for(i=0;i<4;i++){
+		feature->location_counts[0][i]=location_sets[0][i]->size();
+	}
+	if(fatal_index>0){
+		feature->last_fatal=warn_dates[0][end-1]-fatal_clusters[0][fatal_index-1].start_date;
+	}else{
+		feature->last_fatal=-1000;
+	}
+	feature->lead_times=new std::vector<DWORD>(lead_time_size);
+	for(i=0;i<lead_time_size;++i){
+		if(fatal_index<(DWORD)fatal_clusters->size()){
+			feature->lead_times[0][i]=fatal_clusters[0][fatal_index].start_date-warn_dates[0][end-1];
+			if (i==0){
+				feature->fatal_index=fatal_index;
+				for(j=fatal_clusters[0][fatal_index].start;j<fatal_clusters[0][fatal_index].end;j++){
+					for(k=0;k<4;k++){
+						fatal_location_sets[0][k]->insert(fatal_location_columns[0][k][0][j]);
+					}
+				}
+				feature->location_recovery=new std::vector<DTYPE>(4);
+				for(j=0;j<4;j++){
+					feature->location_recovery[0][j]=fatal_location_sets[0][j]->size();
+					for(it=location_sets[0][j]->begin();it!=location_sets[0][j]->end();++it){
+						fatal_location_sets[0][j]->erase(*it);
+					}
+					feature->location_recovery[0][j]=1-(fatal_location_sets[0][j]->size()+.0)/feature->location_recovery[0][j];
+				}
+			}
+			
+		}else{
+			feature->lead_times[0][i]=-1;
+			feature->fatal_index=-1;
+			feature->location_recovery=NULL;
+		}
+		fatal_index++;
+	}
+	for(i=0;i<4;i++){
+		delete location_sets[0][i];
+		delete fatal_location_sets[0][i];
+	}
+	delete location_sets;
+	delete fatal_location_sets;
+	delete feature_count;
+}
+
+/*
+ * This function creates a map from an array of strings to an array of distinct integers
+*/
+std::map<std::string,DWORD>* convert_attribute_table(std::vector<std::string>* attributes){
+	std::map<std::string,DWORD> *result=new std::map<std::string,DWORD>;
+	unsigned i;
+	for(i=0;i<attributes->size();i++){
+		result[0][attributes[0][i]]=i;
+	}
 	return result;
 }
 
-int main(){
-	unsigned i,j,k,w;
-	std::vector<char*>* locations=new std::vector<char*>;
-	char c1[200],c2[200],c3[200],c4[200],c5[200],c6[200],c7[200],c8[200],c0[200];
-	strcpy(c0,"R21-M0-N09-O13");
-	strcpy(c1,"R21-M1-N00-O15");
-	strcpy(c2,"R21-M1-N06-O21");
-	strcpy(c3,"R21-M0-N01-O01");
-	strcpy(c4,"R21-M0-N12-O35");
-	strcpy(c5,"R21-M0-N13-O15");
-	strcpy(c6,"R21-M0-N04-O23");
-	strcpy(c7,"R21-M0-N08-O35");
-	strcpy(c8,"R21-M0-N09-O35");
+/*
+ * This function convert three attributes column in string to an array of distinct integers.
+*/
+std::vector<DWORD>* extract_attribute_column(std::vector<std::vector<char*>*>* warn_table,std::map<std::string,DWORD>* attribute_table){
+	std::vector<DWORD> *result=new std::vector<DWORD>(warn_table[0][0]->size());
+	char* feature_name;
+	unsigned i;
+	for(i=0;i<warn_table[0][0]->size();i++){
+		feature_name=str_join(warn_table[0][COL_COMPONENT][0][i],warn_table[0][COL_CATEGORY][0][i],warn_table[0][COL_SEVERITY][0][i]);
+		std::string s(feature_name);
+		result[0][i]=attribute_table[0][s];
+		Free(feature_name);
+	}
+	return result;
+}
 
-	locations->push_back(c0);
-	locations->push_back(c1);
-	locations->push_back(c2);
-	locations->push_back(c3);
-	locations->push_back(c4);
-	locations->push_back(c5);
-	locations->push_back(c6);
-	locations->push_back(c7);
-	locations->push_back(c8);
+std::vector<DWORD>* extract_location_column(std::vector<std::vector<char*>*>* warn_table,std::map<std::string,DWORD>* attribute_table,DWORD location_level){
+	std::vector<DWORD> *result=new std::vector<DWORD>(warn_table[0][0]->size());
+	char* feature_name;
+	unsigned i;
+	for(i=0;i<warn_table[0][0]->size();i++){
+		feature_name=extract_location_level(warn_table[0][COL_LOCATION][0][i],location_level);
+		std::string s(feature_name);
+		result[0][i]=attribute_table[0][s];
+		Free(feature_name);
+	}
+	return result;
+}
 
-	std::vector<DWORD>* dates=new std::vector<DWORD>;
-	dates->push_back(10);
-	dates->push_back(11);
-	dates->push_back(12);
-	dates->push_back(13);
-	dates->push_back(20);
-	dates->push_back(21);
-	dates->push_back(22);
-	dates->push_back(30);
-	dates->push_back(31);
-	std::vector<Interval>* t_clusters=temporal_clustering(dates,1);
-	std::vector<std::vector<std::vector<std::vector<DWORD>*>*>*>* test=cluster_filter(t_clusters,dates,locations,1,2);
+std::map<std::string,DWORD>* convert_location_table(std::vector<char*>* locations_col,DWORD location_level){
+	std::set<std::string> *locations=new std::set<std::string>;
+	std::map<std::string,DWORD> *result=new std::map<std::string,DWORD>;
+	unsigned i;
+	char* feature_name;
+	for(i=0;i<locations_col->size();i++){
+		feature_name=extract_location_level(locations_col[0][i],location_level);
+		std::string s(feature_name);
+		locations->insert(s);
+		Free(feature_name);
+	}
+	printf("total number of locations=%ld\n",locations->size());
+	std::set<std::string>::iterator it;
+	i=0;
+	for(it=locations->begin();it!=locations->end();++it){
+		result[0][*it]=i;
+		i++;
+	}
+	delete locations;
+	return result;
+}
 
-	std::vector<std::vector<DWORD>*>* st_cluster=unlist_feature_index(test);
-	std::vector<std::string>* attributes=read_attributes("attributes.txt");
 
-	for(i=0;i<test->size();i++){
-		printf("i=%d\n",i);
-		for(j=0;j<test[0][i]->size();j++){
-			printf("  j=%d\n",j);
-			for(k=0;k<test[0][i][0][j]->size();k++){
-				printf("    k=%d\n      w=",k);
-				for(w=0;w<test[0][i][0][j][0][k]->size();w++){
-					printf("%d,",test[0][i][0][j][0][k][0][w]);
-				}
-				printf("\n");
-			}
-		}
+std::vector<StreamingFeature>* streaming_feature(std::vector<std::vector<char*>*>* warn_table, std::vector<std::vector<char*>*>* fatal_table, std::vector<DWORD>* warn_dates,std::vector<std::string>* attributes,std::vector<FatalCluster>* fatal_clusters,DWORD lead_time_size,DWORD window_size){
+	std::vector<StreamingFeature>* results=new std::vector<StreamingFeature>;
+	DWORD i=0;
+	DWORD start,end,size;
+	StreamingFeature sf;
+	DWORD fatal_index=0;
+	DTYPE recovery_rate=0;
+	DWORD recovery_count=0;
+	//Optimization for joint distribution of attributes by converting string names to integers for fast access.
+	std::map<std::string,DWORD> *attribute_table=convert_attribute_table(attributes);
+
+	std::vector<DWORD> *attribute_col=extract_attribute_column(warn_table,attribute_table);
+	delete attribute_table;
+	//Optimization for joint distribution of locations by converting string names to integers for fast access.
+	std::vector<std::vector<DWORD>*> *location_columns=new std::vector<std::vector<DWORD>*>(4);
+	std::vector<std::vector<DWORD>*> *fatal_location_columns=new std::vector<std::vector<DWORD>*>(4);
+	for(i=0;i<4;i++){
+		printf("Processing location %d conversion\n",i+1);
+		attribute_table=convert_location_table(warn_table[0][COL_LOCATION],i+1);
+		location_columns[0][i]=extract_location_column(warn_table,attribute_table,i+1);
+		delete attribute_table;
+		attribute_table=convert_location_table(fatal_table[0][COL_LOCATION],i+1);
+		fatal_location_columns[0][i]=extract_location_column(fatal_table,attribute_table,i+1);
+		delete attribute_table;
 	}
 
-}*/
+	std::set<DWORD> *covered_index=new std::set<DWORD>;
+	i=0;
+	size=0;
+	start=0;
+	while(i<(DWORD)warn_dates->size()){
+		if(size==window_size){
+			end=i;
+			//For the last timestamp, fill all events for exactly the same time stamp.
+			while(end<(DWORD)warn_dates->size()&&(warn_dates[0][end]-warn_dates[0][i])<60){
+				end++;
+			}
+			//Flush fatal index (so only fatals that happen after the events used for features are considered.)
+			while(fatal_index<(DWORD)fatal_clusters->size()&&fatal_clusters[0][fatal_index].start_date<warn_dates[0][i]){
+				fatal_index++;
+			}
+			//Build features
+			construct_streaming_feature(fatal_clusters,warn_dates,attribute_col,location_columns,fatal_location_columns,attributes->size(),start,end,window_size,fatal_index,lead_time_size,&sf);
+			results->push_back(sf);
+			if(sf.fatal_index!=-1){
+				covered_index->insert(sf.fatal_index);
+				if(sf.lead_times[0][0]<3600){
+					recovery_rate+=sf.location_recovery[0][0];
+					recovery_count++;
+				}
+			}
+			//Flush one time stamp (we construct features starting from the next time stamp)
+			i=start;
+			while(i<(DWORD)warn_dates->size()-1&&warn_dates[0][i]-warn_dates[0][start]<60&&i<end){
+				i++;
+			}
+			//printf("%d\n",i);
+			start=i;
+			size=0;
+		}else{
+			size++;
+			i++;
+		}
+	}
+	for(i=0;i<4;i++){
+		delete location_columns[0][i];
+	}
+	printf("total features=%ld, covered fatal=%ld, total fatal=%ld,location recovery=%lf\n",results->size(), covered_index->size(),fatal_clusters->size(),recovery_rate/recovery_count);
+	delete location_columns;
+	delete fatal_location_columns;
+	delete covered_index;
+	delete attribute_col;
+	return results;
+}
+
+

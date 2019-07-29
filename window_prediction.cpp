@@ -72,7 +72,7 @@ void window_normalize_features2(std::vector<Feature>* result){
 	delete median;
 }
 
-std::vector<Feature>* period_based_features(std::vector<std::vector<char*>*>* warn_table,std::vector<std::vector<char*>*>* fatal_table,std::vector<Interval>* fatal_t_clusters,std::vector<DWORD> *warn_dates,std::vector<DWORD> *fatal_dates,DWORD period,DWORD observe_size,DWORD break_down){
+std::vector<Feature>* period_based_features(std::vector<std::vector<char*>*>* warn_table,std::vector<std::vector<char*>*>* fatal_table,std::vector<FatalCluster>* fatal_t_clusters,std::vector<DWORD> *warn_dates,std::vector<DWORD> *fatal_dates,DWORD period,DWORD observe_size,DWORD break_down){
 	std::vector<Feature>* result=new std::vector<Feature>;
 	Feature feature;
 	DWORD start,observation_window,current_window,slice,fatal_location_count,warn_location_count;
