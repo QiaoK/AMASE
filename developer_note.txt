@@ -1,0 +1,64 @@
+# make sure data are read into work space
+ras13<-read.table('ANL-ALCF-RE-MIRA_20130409_20131231.csv',sep = ',' ,header=T)
+ras13<-ras13[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras14<-read.table('ANL-ALCF-RE-MIRA_20140101_20141231.csv',sep = ',' ,header=T)
+ras14<-ras14[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras15<-read.table('ANL-ALCF-RE-MIRA_20150101_20151231.csv',sep = ',' ,header=T)
+ras15<-ras15[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras16<-read.table('ANL-ALCF-RE-MIRA_20160101_20161231.csv',sep = ',' ,header=T)
+ras16<-ras16[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras17<-read.table('ANL-ALCF-RE-MIRA_20170101_20171231.csv',sep = ',' ,header=T)
+ras17<-ras17[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras18<-read.table('ANL-ALCF-RE-MIRA_20180101_20181231.csv',sep = ',' ,header=T)
+ras18<-ras18[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+#1. remove unnecessary data
+
+ras13<-ras13[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras14<-ras14[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras15<-ras15[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras16<-ras16[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras17<-ras17[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+ras18<-ras18[,c("CATEGORY","COMPONENT","SEVERITY","EVENT_TIME","JOBID","BLOCK","LOCATION")]
+
+#2. bind all year data together
+ras<-rbind(ras13,ras14)
+ras<-rbind(ras,ras15)
+ras<-rbind(ras,ras16)
+ras<-rbind(ras,ras16)
+ras<-rbind(ras,ras17)
+ras<-rbind(ras,ras18)
+
+#3. clean all spaces
+for( i in 1:6 ){ras[,i]<-gsub(" ","",ras[,i])}
+
+#4. replace event time
+ras[,"EVENT_TIME"]<-as.numeric(as.POSIXct(strptime(ras[,"EVENT_TIME"], "%Y-%m-%d %H:%M:%S")))
+
+#5. extract system event
+sys_ras<-subset(ras,is.na(JOBID))
+
+#6. extract system spatial event
+
+sys_ras_spatial<-subset(sys_ras,!is.na(LOCATION))
+sys_ras_spatial<-subset(sys_ras,LOCATION!="")
+sys_ras_spatial<-subset(sys_ras_spatial,SEVERITY!="UNKNOWN")
+
+#7. extract system spatial fatal event
+sys_fatal_spatial<-subset(sys_ras_spatial,SEVERITY=="FATAL")
+
+#8. write out processed data
+write.table(sys_ras_spatial,file="sys_events.csv",quote=FALSE,sep=",",col.names=FALSE,row.names=FALSE)
+write.table(sys_fatal_spatial,file="sys_fatal_spatial.csv",quote=FALSE,sep=",",col.names=FALSE,row.names=FALSE)
+
+#9. get unique attributes
+sys_attributes<-paste(sys_ras_spatial[,"CATEGORY"],sys_ras_spatial[,"COMPONENT"],sys_ras_spatial[,"SEVERITY"],sep="-")
+sys_attributes<-unique(sys_attributes)
+fatal_attributes<-paste(sys_fatal_spatial[,"CATEGORY"],sys_fatal_spatial[,"COMPONENT"],sys_fatal_spatial[,"SEVERITY"],sep="-")
+fatal_attributes<-unique(fatal_attributes)
+write.table(sys_attributes,file="sys_attributes.txt",quote=FALSE,sep=",",col.names=FALSE,row.names=FALSE)
+write.table(fatal_attributes,file="fatal_attributes.txt",quote=FALSE,sep=",",col.names=FALSE,row.names=FALSE)
+
+# save image
+save.image("ras_load.RData")
+
+
