@@ -57,8 +57,11 @@ void read_table_row(char* line,std::vector<std::vector<char*>*>* inputs){
 }
 
 void delete_table(std::vector<std::vector<char*>*>* table){
-	unsigned i;
+	unsigned i, j;
 	for(i=0;i<table->size();i++){
+		for(j=0;j<table[0][i]->size();j++){
+			Free(table[0][i][0][j]);
+		}
 		delete(table[0][i]);
 	}
 	delete table;

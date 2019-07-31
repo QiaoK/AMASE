@@ -669,6 +669,37 @@ void delete_st_clusters(std::vector<std::vector<std::vector<std::vector<DWORD>*>
 
 //The following code are for streaming features.
 
+std::vector<std::vector<char*>*>* filter_events(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes){
+	std::vector<std::vector<char*>*>* result = new std::vector<std::vector<char*>*>(table->size());
+	char* feature_name;
+	unsigned int i, j;
+	int check;
+	for ( i = 0; i < table->size(); i++ ){
+		result[0][i] = new std::vector<char*>;
+	}
+	for( i = 0 ; i < table[0][0]->size(); i++){
+		feature_name=str_join(table[0][COL_COMPONENT][0][i],table[0][COL_CATEGORY][0][i],table[0][COL_SEVERITY][0][i]);
+		std::string s(feature_name);
+		check = 0;
+                for ( j = 0; j < attributes->size(); j++ ){
+			if(s.find(attributes[0][j]) != std::string::npos){
+				check = 1;
+				break;
+			}
+		}
+		Free(feature_name);
+		if (check){
+			for ( j = 0;j < table->size(); j++ ){
+				feature_name=Calloc(strlen(table[0][j][0][i])+1,char);
+				strcpy(feature_name, table[0][j][0][i]);
+				result[0][j]->push_back(feature_name);
+			}
+		}
+	}
+	return result;
+
+}
+
 std::vector<DTYPE>* extract_cluster_features(std::vector<std::vector<char*>*>* table,std::vector<std::string>* attributes, std::vector<int>* critical_attribute_index, DWORD start, DWORD end){
 	unsigned i,index;
 	char* feature_name;

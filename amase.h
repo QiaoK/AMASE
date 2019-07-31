@@ -98,4 +98,7 @@ extern char* extract_location_level(char* location,WORD location_level);
 //Streaming feature
 extern std::vector<StreamingFeature>* streaming_feature(std::vector<std::vector<char*>*>* warn_table,std::vector<std::vector<char*>*>* fatal_table, std::vector<DWORD>* warn_dates,std::vector<std::string>* attributes,std::vector<FatalCluster>* fatal_clusters,DWORD lead_time_size,DWORD window_size);
 extern void write_streaming_features(const char* filename,std::vector<StreamingFeature>* clusters,std::vector<std::string>* attributes,DWORD lead_time_size);
+
+extern std::vector<std::vector<char*>*>* filter_events(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes);
+
 #endif

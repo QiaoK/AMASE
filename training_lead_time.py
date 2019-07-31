@@ -26,7 +26,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # Hyper parameters
 output_size = 2
 learning_rate = 0.001
-batch_size = 1024
+batch_size = 32
 #lead_time_interval = 36000
 #lead_time_stride = 1
 
@@ -49,7 +49,9 @@ class ConvNet(nn.Module):
             nn.BatchNorm1d(filter1),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=[2], stride=[2]))
-        self.fc_hidden = nn.Linear(int(int(sequence_length/kernel_size)/2)*filter1+feature_length, hidden)
+        conv_size = int((sequence_length+kernel_size-1)/kernel_size)
+        conv_size = int((conv_size + 1 )/2)
+        self.fc_hidden = nn.Linear(conv_size+feature_length, hidden)
         #self.fc_hidden = nn.Linear(feature_length, hidden)
         self.relu = nn.ReLU()
         self.dropout = nn.Dropout(p=0.21)
@@ -181,19 +183,12 @@ def read_data(filename,lead_time_interval,lead_time_stride):
     with open(filename) as csvfile:
         reader = csv.DictReader(csvfile)
         entries = list(reader.fieldnames)
-	remove_entries = []
-	for k in entries:
-		if 'NOT_FEATURE' in k:
-			remove_entries.append(k)
-	for k in remove_entries:
-		entries.remove(k)
-        entries.remove("FATAL_INDEX_NOT_FEATURE")
-        entries.remove("LEAD_TIME_1_NOT_FEATURE")
-        entries.remove("DATE_NOT_FEATURE")
-        entries.remove("LOCATION_RECOVERY_1_NOT_FEATURE")
-        entries.remove("LOCATION_RECOVERY_2_NOT_FEATURE")
-        entries.remove("LOCATION_RECOVERY_3_NOT_FEATURE")
-        entries.remove("LOCATION_RECOVERY_4_NOT_FEATURE")
+        remove_entries = []
+        for k in entries:
+            if 'NOT_FEATURE' in k:
+                remove_entries.append(k)
+        for k in remove_entries:
+            entries.remove(k)
         feature_names=[]
         conv_names=[]
         for k in entries:
@@ -537,7 +532,6 @@ if __name__ == "__main__":
                 labels = batch_y.to(device)
                 # Forward pass
                 #print(batch_conv_x.shape)
-                #print(batch_x.shape)
                 outputs = model(batch_conv_x,batch_x)
                 loss = criterion(outputs, labels)
                 # Backward and optimize
@@ -553,7 +547,7 @@ if __name__ == "__main__":
             result.write(messages+'\n')
             model.train()
         torch.save(model.state_dict(), '{0}_model.ckpt'.format(sys.argv[1]))
-        write_all_predictions(fatal_predictions)
+        #write_all_predictions(fatal_predictions)
     else:
         model.load_state_dict(torch.load('{0}_model.ckpt'.format(sys.argv[1])))
         #messages=evaluate_model(train_data,train_labels,eval_data0,eval_label0,eval_dates0,eval_data1,eval_label1,eval_dates1,fatal_dict,model)
