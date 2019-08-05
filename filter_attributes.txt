@@ -1,0 +1,5 @@
+AC_TO_DC_PWR
+Cable
+BAREMETAL
+MMCS-
+MC-
