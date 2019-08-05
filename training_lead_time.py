@@ -462,7 +462,7 @@ def shuffle_data(data_x,conv_x,data_y):
 
 if __name__ == "__main__":
     if len(sys.argv) != 7:
-        print("Usage: python training_lead_time.py feature_file_name training_epochs retrain(0 or 1) reload_data(0 or 1) lead_time_interval lead_time_stride")
+        print("Usage: python training_lead_time.py feature_file_name training_epochs retrain(0 or 1) reload_data(0 or 1) lead_time_interval(3600) lead_time_stride(1)")
         sys.exit()
     # Load training and eval data
     random.seed(5555)
@@ -500,6 +500,10 @@ if __name__ == "__main__":
     model = ConvNet(feature_length=train_data.shape[1],sequence_length=train_conv.shape[1],num_classes=lead_time_stride+1).to(device)
     result=open('{0}_{1}_{2}.txt'.format(sys.argv[1],lead_time_interval,lead_time_stride),'w')
     print('start optimization')
+    train_data = train_data[0:1000]
+    train_conv = train_conv[0:1000]
+    train_labels = train_labels[0:1000]
+    print(train_data.shape,train_conv.shape,train_labels.shape)
     if retrain==1:
         model.train()
         #weights = torch.from_numpy(np.array([.1,.6,0.3])).float().to(device)

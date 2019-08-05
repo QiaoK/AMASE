@@ -669,6 +669,28 @@ void delete_st_clusters(std::vector<std::vector<std::vector<std::vector<DWORD>*>
 
 //The following code are for streaming features.
 
+
+//Filter a list string by key words in another string.
+std::vector<std::string>* filter_attributes_by_keywords(std::vector<std::string>* attributes, std::vector<std::string>* filter_attributes) {
+	unsigned int i, j;
+	std::vector<std::string>* result = new std::vector<std::string>;
+	int check;
+	for ( i = 0; i < attributes->size(); ++i ){
+		check = 0;
+		for ( j = 0; j < filter_attributes->size(); ++j ){
+			if (attributes[0][i].find(filter_attributes[0][j]) != std::string::npos) {
+				check = 1;
+			}
+		}
+		if (check){
+			result->push_back(attributes[0][i]);
+		}
+	}
+	return result;
+}
+
+
+//Filter events by joining their attributes and see if they contain certain keywords in attributes.
 std::vector<std::vector<char*>*>* filter_events(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes){
 	std::vector<std::vector<char*>*>* result = new std::vector<std::vector<char*>*>(table->size());
 	char* feature_name;

@@ -3,6 +3,7 @@
 int main(int argc,char** argv){
 	DWORD window_size,lead_time_count,t_cluster_threshold;
 	std::vector<std::vector<char*>*>* copy_table;
+	std::vector<std::string>* temp;
 	if(argc!=6){
 		printf("Usage:./streaming_feature filename1 filename2 fatal_t_threshold window_size lead_time_count\n");
 		return 1;
@@ -10,13 +11,22 @@ int main(int argc,char** argv){
 	std::vector<std::string>* attributes=read_attributes("sys_attributes.txt");
 	std::vector<std::string>* fatal_attributes=read_attributes("fatal_attributes.txt");
 	std::vector<std::string>* filter_attributes=read_attributes("filter_attributes.txt");
+	temp = attributes;
+	attributes = filter_attributes_by_keywords(attributes, filter_attributes);
+	delete temp;
+	temp = fatal_attributes;
+	fatal_attributes = filter_attributes_by_keywords(fatal_attributes, filter_attributes);
+	delete temp;
+	printf("attribute read and filter completed\n");
 
 	std::vector<std::vector<char*>*>* warn_table=read_table(argv[1]);
-        copy_table=filter_events(warn_table, filter_attributes);
+	printf("# of warn is %ld\n",warn_table[0][0]->size());
+        copy_table = filter_events(warn_table, filter_attributes);
 	delete_table(warn_table);
 	warn_table = copy_table;
 	std::vector<std::vector<char*>*>* fatal_table=read_table(argv[2]);
-        copy_table=filter_events(fatal_table, filter_attributes);
+	printf("# of fatal is %ld\n",fatal_table[0][0]->size());
+        copy_table = filter_events(fatal_table, filter_attributes);
 	delete_table(fatal_table);
 	fatal_table = copy_table;
 	printf("Table filter finished, # of warn is %ld, # of fatal is %ld\n",warn_table[0][0]->size(),fatal_table[0][0]->size());
@@ -30,8 +40,8 @@ int main(int argc,char** argv){
 
 	printf("Data read finished\n");
 	std::vector<Interval>* fatal_t_clusters=temporal_clustering(fatal_dates,t_cluster_threshold);
-	std::vector<FatalCluster>* fatal_features=st_cluster_to_features(fatal_t_clusters,fatal_table,fatal_dates, filter_attributes,filter_attributes);
-	printf("total number of fatal_features=%ld, size of attributes=%ld\n",fatal_features->size(),filter_attributes->size());
+	std::vector<FatalCluster>* fatal_features=st_cluster_to_features(fatal_t_clusters,fatal_table,fatal_dates, fatal_attributes,filter_attributes);
+	printf("total number of fatal_features=%ld, size of attributes=%ld, size of fatal attributes = %ld\n",fatal_features->size(),attributes->size(), fatal_attributes->size());
 	printf("ST clustering for fatal events finished\n");
 
 	std::vector<StreamingFeature>* features=streaming_feature(warn_table,fatal_table, warn_dates,attributes,fatal_features,lead_time_count,window_size);

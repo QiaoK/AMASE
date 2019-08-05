@@ -100,5 +100,5 @@ extern std::vector<StreamingFeature>* streaming_feature(std::vector<std::vector<
 extern void write_streaming_features(const char* filename,std::vector<StreamingFeature>* clusters,std::vector<std::string>* attributes,DWORD lead_time_size);
 
 extern std::vector<std::vector<char*>*>* filter_events(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes);
-
+extern std::vector<std::string>* filter_attributes_by_keywords(std::vector<std::string>* attributes, std::vector<std::string>* filter_attributes);
 #endif
