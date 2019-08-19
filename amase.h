@@ -101,4 +101,7 @@ extern void write_streaming_features(const char* filename,std::vector<StreamingF
 
 extern std::vector<std::vector<char*>*>* filter_events(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes);
 extern std::vector<std::string>* filter_attributes_by_keywords(std::vector<std::string>* attributes, std::vector<std::string>* filter_attributes);
+
+extern void fatal_cluster_analysis(std::vector<Interval>* st_clusters,std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes);
+extern void fatal_event_analysis(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes);
 #endif

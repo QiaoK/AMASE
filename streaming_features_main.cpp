@@ -27,12 +27,16 @@ int main(int argc,char** argv){
 	std::vector<std::vector<char*>*>* fatal_table=read_table(argv[2]);
 	printf("# of fatal is %ld\n",fatal_table[0][0]->size());
         copy_table = filter_events(fatal_table, filter_attributes);
+
 	delete_table(fatal_table);
 	fatal_table = copy_table;
-	printf("Table filter finished, # of warn is %ld, # of fatal is %ld\n",warn_table[0][0]->size(),fatal_table[0][0]->size());
+
+	printf("Table filter finished, # of warn is %ld, # of fatal is %ld\n",warn_table[0][1]->size(),fatal_table[0][1]->size());
 
 	std::vector<DWORD>* warn_dates=chars2ints(warn_table[0][COL_DATE]);
 	std::vector<DWORD>* fatal_dates=chars2ints(fatal_table[0][COL_DATE]);
+
+        printf("check %ld, %ld\n",warn_dates->size(),fatal_dates->size());
 	t_cluster_threshold=atoi(argv[3]);	
 	window_size=atoi(argv[4]);
 	lead_time_count=atoi(argv[5]);
@@ -40,6 +44,7 @@ int main(int argc,char** argv){
 
 	printf("Data read finished\n");
 	std::vector<Interval>* fatal_t_clusters=temporal_clustering(fatal_dates,t_cluster_threshold);
+        printf("fatal clustering finished\n");
 	std::vector<FatalCluster>* fatal_features=st_cluster_to_features(fatal_t_clusters,fatal_table,fatal_dates, fatal_attributes,filter_attributes);
 	printf("total number of fatal_features=%ld, size of attributes=%ld, size of fatal attributes = %ld\n",fatal_features->size(),attributes->size(), fatal_attributes->size());
 	printf("ST clustering for fatal events finished\n");

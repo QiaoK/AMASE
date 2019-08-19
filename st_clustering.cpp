@@ -669,6 +669,74 @@ void delete_st_clusters(std::vector<std::vector<std::vector<std::vector<DWORD>*>
 
 //The following code are for streaming features.
 
+void fatal_event_analysis(std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes){
+	unsigned int i;
+	char* feature_name;
+	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
+	for ( i = 0; i < attributes->size(); ++i ){
+		feature_count[0][attributes[0][i]] = 0;
+	}
+	for ( i = 0; i < table[0][0]->size(); ++i ){
+		feature_name=str_join(table[0][COL_COMPONENT][0][i],table[0][COL_CATEGORY][0][i],table[0][COL_SEVERITY][0][i]);
+		std::string s(feature_name);
+		feature_count[0][s]+=1;
+		Free(feature_name);
+	}
+	FILE* stream = fopen("fatal_attributes.csv","w");
+	for ( i = 0; i < attributes->size(); ++i ){
+		fprintf(stream,"%s,%d\n",attributes[0][i].c_str(),feature_count[0][attributes[0][i]]);
+		printf("attributes name = %s, size of fatal cluster = %d\n",attributes[0][i].c_str(), feature_count[0][attributes[0][i]]);
+	}
+	fclose(stream);
+}
+
+void fatal_cluster_analysis(std::vector<Interval>* st_clusters,std::vector<std::vector<char*>*>* table, std::vector<std::string>* attributes){
+	unsigned int i, j;
+	char* feature_name;
+	std::map<std::string,DWORD> *feature_count=new std::map<std::string,DWORD>;
+	std::map<std::string,DWORD> *cluster_count=new std::map<std::string,DWORD>;
+	std::string max_count_string;
+	DWORD max_count;
+	std::vector<DTYPE> *cluster_size = new std::vector<DTYPE>(st_clusters->size());
+	for ( i = 0; i < attributes->size(); ++i ){
+		cluster_count[0][attributes[0][i]] = 0;
+	}
+	for ( i = 0; i < st_clusters->size(); ++i ){
+		for ( j = (unsigned int)st_clusters[0][i].start; j < (unsigned int)st_clusters[0][i].end; ++j ){
+			feature_name=str_join(table[0][COL_COMPONENT][0][j],table[0][COL_CATEGORY][0][j],table[0][COL_SEVERITY][0][j]);
+			std::string s(feature_name);
+			if(feature_count->find(s)==feature_count->end()){
+				feature_count[0][s]=1;
+			}else{
+				feature_count[0][s]+=1;
+			}
+			Free(feature_name);
+		}
+		cluster_size[0][i] = st_clusters[0][i].end - st_clusters[0][i].start;
+		max_count = 0;
+		max_count_string = attributes[0][0];
+		for ( j = 0; j < attributes->size(); ++j ){
+			if(feature_count->find(attributes[0][j])!=feature_count->end()){
+				if (feature_count[0][attributes[0][j]] > max_count){
+					max_count = feature_count[0][attributes[0][j]];
+					max_count_string = attributes[0][j];
+				}
+			}
+		}
+		if(cluster_count->find(max_count_string)==cluster_count->end()){
+			cluster_count[0][max_count_string]=1;
+		}else{
+			cluster_count[0][max_count_string]+=1;
+		}
+	}
+	std::sort(cluster_size->begin(),cluster_size->end());
+	for ( i = 0; i < attributes->size(); ++i ){
+		printf("attributes name = %s, size of fatal cluster = %d\n",attributes[0][i].c_str(), cluster_count[0][attributes[0][i]]);
+	}
+	printf("size 10%% quantile = %lf, 25%% quantile=%lf, median = %lf, 75%% quantile=%lf,90%% quantile = %lf\n",cluster_size[0][int(cluster_size->size()*.1)],cluster_size[0][int(cluster_size->size()*.25)],cluster_size[0][int(cluster_size->size()*.5)],cluster_size[0][int(cluster_size->size()*.75)],cluster_size[0][int(cluster_size->size()*.9)]);
+	delete cluster_count;
+	delete feature_count;
+}
 
 //Filter a list string by key words in another string.
 std::vector<std::string>* filter_attributes_by_keywords(std::vector<std::string>* attributes, std::vector<std::string>* filter_attributes) {
