@@ -3,7 +3,7 @@ To reproduce the results, you need to go to ANL ALCF website to download MIRA da
 
 # System requirement
 
-- gcc compiler that supports C98.
+- gcc compiler that supports C99.
 - python3
 - pytorch 1.0
 - R
